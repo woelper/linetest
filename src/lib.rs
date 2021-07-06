@@ -7,14 +7,20 @@ mod latency;
 type MeasurementResult = Vec<Datapoint>;
 
 pub trait Measurable {
-    fn mean_latency(&self) -> f32 {
+    fn mean(&self) -> f32 {
         unimplemented!()
     }
 }
 
 impl Measurable for MeasurementResult {
-    fn mean_latency(&self) -> f32 {
-        self.iter().fold(0.0, |acc, e| acc + e.latency) / self.len() as f32
+    fn mean(&self) -> f32 {
+        self.iter().fold(0.0, |acc, e| {
+            match e {
+                Datapoint::Latency(l, _t) => acc + l,
+                Datapoint::ThroughputUp(up, _t) => acc + up,
+                Datapoint::ThroughputDown(dn, _t) => acc + dn,
+            }
+        }) / self.len() as f32
     }
 }
 
@@ -36,26 +42,26 @@ impl Measurement {
     pub fn new() -> Self {
         Measurement::default()
     }
-
+    pub fn run(&self) {
+        
+    }
 }
 
-/// A single network measurement point
+
+/// A single data point, containing different possible measurements. All of them
+/// are time stamped.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Datapoint {
-    pub latency: f32,
-    pub throughput_up: f32,
-    pub throughput_down: f32,
-    pub timestamp: SystemTime,
+pub enum Datapoint {
+    Latency(f32, SystemTime),
+    ThroughputUp(f32, SystemTime),
+    ThroughputDown(f32, SystemTime),
 }
+
 
 impl Datapoint {
-    fn new(latency: f32, throughput_up: f32, throughput_down: f32) -> Self {
-        Self {
-            latency,
-            throughput_up,
-            throughput_down,
-            timestamp: SystemTime::now(),
-        }
+    /// Add a latency `Datapoint`
+    fn add_latency(latency: f32) -> Self {
+        Datapoint::Latency(latency, SystemTime::now())
     }
 }
 
@@ -69,10 +75,10 @@ mod tests {
         let mut log: MeasurementResult = vec![];
 
         for i in 1..10 {
-            log.push(Datapoint::new(i as f32, 10., 5.));
+            log.push(Datapoint::add_latency(i as f32));
         }
 
         dbg!(&log);
-        dbg!(log.mean_latency());
+        dbg!(log.mean());
     }
 }
