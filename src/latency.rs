@@ -1,18 +1,23 @@
-
-use pinger::{ping, PingResult};
 use anyhow::Error;
+use log::{debug};
+use pinger::{ping, PingResult};
+use std::{sync::mpsc::Receiver, time::Duration};
 
+pub fn ping_receiver(addr: &str) -> Result<Receiver<PingResult>, Error> {
+    ping(addr.to_string())
+}
 
-pub fn do_ping(addr: &str) {
-
-    let stream = ping(addr.to_string()).expect("Error pinging");
+pub fn ping_callback<F: FnMut(Option<Duration>)>(addr: &str, mut callback: F) -> Result<(), Error> {
+    let stream = ping(addr.to_string())?;
     for message in stream {
+        debug!("Ping msg {}", message);
         match message {
-            PingResult::Pong(duration, _) => println!("{:?}", duration),
-            PingResult::Timeout(_) => println!("Timeout!"),
+            PingResult::Pong(duration, _) => callback(Some(duration)),
+            PingResult::Timeout(_) => callback(None),
             // Unknown lines, just ignore.
-            PingResult::Unknown(line) => ()
+            PingResult::Unknown(_line) => (),
         }
+        return Ok(());
     }
-
+    Ok(())
 }
