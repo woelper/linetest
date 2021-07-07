@@ -1,9 +1,9 @@
 use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
+/// Latency measurement tools
 mod latency;
-use log::*;
-use env_logger;
-
+/// Throughput measurement tools (Download speed)
+mod throughput;
 
 type MeasurementResult = Vec<Datapoint>;
 
@@ -25,13 +25,16 @@ impl Measurable for MeasurementResult {
 }
 
 pub struct Measurement {
-    ping_ip: String,
+    /// The IP address to use for latency tests.
+    pub ping_ip: String,
+    pub downloads: Vec<String>
 }
 
 impl Default for Measurement {
     fn default() -> Self {
         Self {
             ping_ip: "8.8.8.8".to_string(),
+            downloads: vec!["https://github.com/aseprite/aseprite/releases/download/v1.2.27/Aseprite-v1.2.27-Source.zip".to_string()]
         }
     }
 }
@@ -73,6 +76,8 @@ impl Datapoint {
 mod tests {
 
     use super::*;
+    use log::*;
+
 
     #[test]
     fn write() {
