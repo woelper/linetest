@@ -1,10 +1,11 @@
-use std::time::SystemTime;
+use anyhow::Error;
 use serde::{Deserialize, Serialize};
+use std::{fmt, sync::mpsc::{channel, Receiver}, thread::{self, sleep, Thread}, time::{Duration, SystemTime}};
 /// Latency measurement tools
 mod latency;
 /// Throughput measurement tools (Download speed)
 mod throughput;
-
+use log::{debug, info};
 type MeasurementResult = Vec<Datapoint>;
 
 pub trait Measurable {
@@ -16,7 +17,7 @@ pub trait Measurable {
 impl Measurable for MeasurementResult {
     fn mean(&self) -> f32 {
         self.iter().fold(0.0, |acc, e| match e {
-            //TODO: using anything as mean calculation is not good, maybe skip these values? 
+            //TODO: using anything as mean calculation is not good, maybe skip these values?
             Datapoint::Latency(l, _t) => acc + l.unwrap_or(1000.),
             Datapoint::ThroughputUp(up, _t) => acc + up.unwrap_or_default(),
             Datapoint::ThroughputDown(dn, _t) => acc + dn.unwrap_or_default(),
@@ -27,23 +28,97 @@ impl Measurable for MeasurementResult {
 pub struct Measurement {
     /// The IP address to use for latency tests.
     pub ping_ip: String,
-    pub downloads: Vec<String>
+    pub downloads: Vec<String>,
+    pub result: MeasurementResult,
+    pub ping_delay: Duration,
+    pub throughput_delay: Duration,
 }
 
 impl Default for Measurement {
     fn default() -> Self {
         Self {
             ping_ip: "8.8.8.8".to_string(),
-            downloads: vec!["https://github.com/aseprite/aseprite/releases/download/v1.2.27/Aseprite-v1.2.27-Source.zip".to_string()]
+            downloads: vec![
+                // "https://github.com/aseprite/aseprite/releases/download/v1.2.27/Aseprite-v1.2.27-Source.zip".to_string(),
+                // "http://87.76.21.20/test.zip".to_string(),
+                // "https://dl.google.com/drive-file-stream/GoogleDriveSetup.exe".to_string(),
+                "https://awscli.amazonaws.com/AWSCLIV2.msi".to_string(),
+                "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip".to_string(),
+            ],
+            result: vec![],
+            ping_delay: Duration::from_secs(10),
+            throughput_delay: Duration::from_secs(30),
         }
     }
 }
 
 impl Measurement {
+    /// Generate a default measurement
     pub fn new() -> Self {
         Measurement::default()
     }
-    pub fn run(&self) {}
+
+    /// Execute a measurement once
+    pub fn run(&mut self) {
+        latency::ping_callback(&self.ping_ip.clone(), |duration_result| {
+            match duration_result {
+                Some(duration) => self
+                    .result
+                    .push(Datapoint::add_latency(Some(duration.as_secs_f32()))),
+                None => self.result.push(Datapoint::add_latency(None)),
+            };
+        })
+        .unwrap();
+
+        for url in &self.downloads {
+            let download_result = throughput::measured_download(url)
+                .ok()
+                .map(|d| throughput::to_mbits(d));
+
+            self.result.push(Datapoint::add_tp_down(download_result));
+        }
+
+        info!("Seq: {:?}", self.result);
+
+        let d = throughput::combined_download(&self.downloads).unwrap();
+        info!("Combined rayon: {:?}", d);
+        info!("Combined rayon: {:?}", throughput::to_mbits(d));
+    }
+
+    pub fn run_periodic(&self) -> Result<Receiver<Datapoint>, Error> {
+        let (sender, receiver) = channel();
+
+        let ping_delay = self.ping_delay;
+        let ping_ip = self.ping_ip.clone();
+        let ping_sender = sender.clone();
+        thread::spawn(move || loop {
+            latency::ping_callback(&ping_ip, |duration_result| {
+                match duration_result {
+                    Some(duration) => ping_sender
+                        .send(Datapoint::add_latency(Some(duration.as_secs_f32())))
+                        .unwrap(),
+                    None => ping_sender.send(Datapoint::add_latency(None)).unwrap(),
+                };
+            })
+            .expect("Ping failed on this system");
+            debug!("Waiting {:?} to next speed ping", ping_delay);
+            sleep(ping_delay);
+        });
+
+        let throughput_delay = self.throughput_delay;
+        let urls = self.downloads.clone();
+        thread::spawn(move || loop {
+            let download_result = throughput::combined_download(&urls)
+                .ok()
+                .map(|d| throughput::to_mbits(d));
+
+            let _ = sender.send(Datapoint::add_tp_down(download_result));
+            debug!("Waiting {:?} to next speed test", throughput_delay);
+            sleep(throughput_delay);
+        });
+
+        Ok(receiver)
+    }
 }
 
 /// A single data point, containing different possible measurements. All of them
@@ -72,15 +147,26 @@ impl Datapoint {
     }
 }
 
+impl fmt::Display for Datapoint {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Datapoint::Latency(l,t) => write!(f, "Ping: {} ms", l.map(|d| (d*1000.).to_string()).unwrap_or("Timeout".to_string())),
+            Datapoint::ThroughputUp(up, t) => write!(f, "Upload speed: {} Mbit/s", up.map(|d| d.to_string()).unwrap_or("Timeout".to_string())),
+            Datapoint::ThroughputDown(dn, t) => write!(f, "Download speed: {} Mbit/s", dn.map(|d| d.to_string()).unwrap_or("Timeout".to_string())),
+ 
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
 
     use super::*;
     use log::*;
 
-
     #[test]
-    fn write() {
+    fn latency() {
         std::env::set_var("RUST_LOG", "debug");
         let _ = env_logger::try_init();
 
@@ -90,13 +176,40 @@ mod tests {
             info!("Ping {}", i);
             latency::ping_callback("8.8.8.8", |duration_result| {
                 match duration_result {
-                    Some(duration) => log.push(Datapoint::add_latency(Some(duration.as_secs_f32()))),
+                    Some(duration) => {
+                        log.push(Datapoint::add_latency(Some(duration.as_secs_f32())))
+                    }
                     None => log.push(Datapoint::add_latency(None)),
                 };
-            }).unwrap();
+            })
+            .unwrap();
         }
 
         info!("{:?}", &log);
         info!("{:?}", &log.mean());
+    }
+
+    #[test]
+    fn throughput() {
+        std::env::set_var("RUST_LOG", "debug");
+        let _ = env_logger::try_init();
+
+        let mut log: MeasurementResult = vec![];
+
+        // throughput::measured_download(url)
+
+        info!("{:?}", &log);
+        info!("{:?}", &log.mean());
+    }
+
+    #[test]
+    fn run() {
+        std::env::set_var("RUST_LOG", "info");
+        let _ = env_logger::try_init();
+
+        let mut measurement = Measurement::default();
+        measurement.run();
+
+        info!("{:?}", measurement.result);
     }
 }
