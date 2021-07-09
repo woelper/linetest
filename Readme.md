@@ -1,6 +1,6 @@
 # linetest
 
-A library to continuously measure, log and visualize throughput and latency potentially unstable network connections.
+A library to continuously measure, log and visualize throughput and latency of potentially unstable network connections.
 
 ### Goals:
 - Can be used to create long-running tests of network connections
