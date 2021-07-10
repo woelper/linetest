@@ -2,6 +2,8 @@
 name = "linetest-gui"
 version = "0.1.0"
 edition = "2018"
+description = "Graphical network connection measurement"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,3 +15,15 @@ linetest = { path = "../"}
 [features]
 default = []
 persistence = ["eframe/persistence", "serde"] # Enable if you want to persist app state on shutdown
+
+
+[package.metadata.bundle]
+name = "linetest"
+identifier = "com.github.woelper.linetest"
+icon = ["icon.png"]
+copyright = "Johann Woelper"
+category = "Developer Tool"
+short_description = "Check your internet connection"
+long_description = """
+Get insight about your internet connection
+"""
