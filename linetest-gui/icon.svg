@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="210mm"
+   height="297mm"
+   viewBox="0 0 210 297"
+   version="1.1"
+   id="svg5"
+   inkscape:version="1.1 (c68e22c387, 2021-05-23)"
+   sodipodi:docname="icon.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="3.5031586"
+     inkscape:cx="227.50897"
+     inkscape:cy="405.77666"
+     inkscape:window-width="2560"
+     inkscape:window-height="1376"
+     inkscape:window-x="1920"
+     inkscape:window-y="27"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs2" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:#333333;stroke:none;stroke-width:0.264583;fill-opacity:1"
+       id="rect31"
+       width="58.503693"
+       height="58.503693"
+       x="34.613323"
+       y="82.895401"
+       inkscape:export-filename="/home/woelper/repos/linetest/linetest-gui/icon.png"
+       inkscape:export-xdpi="106.12923"
+       inkscape:export-ydpi="106.12923" />
+    <path
+       style="fill:none;stroke:#aa0000;stroke-width:2.765;stroke-linecap:round;stroke-linejoin:miter;stroke-opacity:1;stroke-miterlimit:4;stroke-dasharray:none"
+       d="m 34.613323,141.39909 11.064885,-29.46552 4.585468,13.392 7.498902,-26.018628 3.25858,15.535768 7.123165,0.0851 4.410922,15.85755 20.561773,-47.890011"
+       id="path713"
+       inkscape:export-filename="/home/woelper/repos/linetest/linetest-gui/icon.png"
+       inkscape:export-xdpi="106.12923"
+       inkscape:export-ydpi="106.12923" />
+  </g>
+</svg>
