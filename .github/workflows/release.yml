@@ -53,18 +53,18 @@ jobs:
       run: sudo apt-get install libxcb-shape0-dev libxcb-xfixes0-dev libxext-dev libxkbcommon-dev
       if: matrix.os == 'ubuntu-latest'
 
-    - name: Change folder tp gui
-      run: cd linetest-gui
-
     - name: Build
+      working-directory: ./linetest-gui
       run: cargo build --release
 
     - name: Build Mac Bundle
+      working-directory: ./linetest-gui
       run: cargo bundle --release
       if: matrix.os == 'macOS-latest'
 
     - name: Zip Mac Bundle
-      run: mv target/release/bundle/osx/birdseye.app . && zip -r birdseye_app.zip birdseye.app
+      working-directory: ./linetest-gui
+      run: mv target/release/bundle/osx/linetest-gui.app . && zip -r linetest_app.zip linetest.app
       if: matrix.os == 'macOS-latest'
 
     - name: Upload Linux Release
@@ -75,8 +75,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.release_job.outputs.upload_url }}
-        asset_path: target/release/birdseye
-        asset_name: birdseye_linux
+        asset_path: linetest-gui/target/release/linetest-gui
+        asset_name: linetest_linux
         asset_content_type: application/zip
 
     - name: Upload Mac Release
@@ -87,8 +87,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.release_job.outputs.upload_url }}
-        asset_path: birdseye_app.zip
-        asset_name: birdseye_mac.zip
+        asset_path: linetest_app.zip
+        asset_name: linetest_mac.zip
         asset_content_type: application/zip
 
     - name: Upload Windows Release
@@ -99,8 +99,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.release_job.outputs.upload_url }}
-        asset_path: target/release/birdseye.exe
-        asset_name: birdseye.exe
+        asset_path: linetest-gui/target/release/linetest-gui.exe
+        asset_name: linetest.exe
         asset_content_type: application/zip
 
   publish_release:

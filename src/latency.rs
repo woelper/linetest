@@ -1,7 +1,7 @@
 use anyhow::Error;
 use log::debug;
 use pinger::{ping, PingResult};
-use std::{sync::mpsc::Receiver, time::Duration};
+use std::{time::Duration};
 
 
 
