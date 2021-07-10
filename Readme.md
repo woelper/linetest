@@ -1,6 +1,8 @@
 # linetest
 
-A library to continuously measure, log and visualize throughput and latency of potentially unstable network connections.
+_A library to continuously measure, log and visualize throughput and latency of potentially unstable network connections._
+
+[![Checks](https://github.com/woelper/linetest/actions/workflows/run_tests.yml/badge.svg)](https://github.com/woelper/linetest/actions/workflows/run_tests.yml)
 
 ### Goals:
 - Can be used to create long-running tests of network connections
