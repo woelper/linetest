@@ -81,6 +81,7 @@ jobs:
         asset_content_type: application/zip
 
     - name: Upload Mac Release
+      working-directory: ./linetest-gui
       if: matrix.os == 'macOS-latest'
       id: upload-release-asset-mac
       uses: actions/upload-release-asset@v1
