@@ -3,9 +3,7 @@ use log::debug;
 use pinger::{ping, PingResult};
 use std::{sync::mpsc::Receiver, time::Duration};
 
-pub fn ping_receiver(addr: &str) -> Result<Receiver<PingResult>, Error> {
-    ping(addr.to_string())
-}
+
 
 pub fn ping_callback<F: FnMut(Option<Duration>)>(addr: &str, mut callback: F) -> Result<(), Error> {
     let stream = ping(addr.to_string())?;
