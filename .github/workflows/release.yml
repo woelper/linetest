@@ -81,7 +81,6 @@ jobs:
         asset_content_type: application/zip
 
     - name: Upload Mac Release
-      working-directory: ./linetest-gui
       if: matrix.os == 'macOS-latest'
       id: upload-release-asset-mac
       uses: actions/upload-release-asset@v1
@@ -89,7 +88,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.release_job.outputs.upload_url }}
-        asset_path: linetest_app.zip
+        asset_path: linetest-gui/linetest_app.zip
         asset_name: linetest_mac.zip
         asset_content_type: application/zip
 
