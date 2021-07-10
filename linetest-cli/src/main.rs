@@ -1,5 +1,5 @@
 use gumdrop::Options;
-use linetest;
+use linetest::{self, Measurable};
 
 #[derive(Debug, Options)]
 struct MyOptions {
@@ -33,11 +33,15 @@ fn main() {
     let mut measurement = linetest::Measurement::default();
 
     let receiver = measurement.run_periodic().unwrap();
-    loop {
+    let mut measurement_result = vec![];
 
+    loop {
         for dp in &receiver {
-    
             println!("{}", dp);
+            measurement_result.push(dp);
+            if let Some(log) = &measurement.logfile {
+                measurement_result.save(log);
+            }
         }
     }
 

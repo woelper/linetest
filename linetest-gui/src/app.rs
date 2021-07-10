@@ -1,5 +1,5 @@
 use std::sync::mpsc::Receiver;
-use linetest::{self, Datapoint};
+use linetest::{self, Datapoint, Measurable};
 use eframe::{egui, epi};
 use egui::plot::{Line, Plot, Value, Values};
 use std::time::UNIX_EPOCH;
@@ -56,6 +56,7 @@ impl epi::App for TemplateApp {
 
       
 
+        ctx.request_repaint();
         for dp in receiver.try_recv() {
             datapoints.push(dp);
         }
@@ -72,13 +73,16 @@ impl epi::App for TemplateApp {
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
-            ui.heading("Side Panel");
+            ui.heading("Info");
 
             ui.label(format!("{} samples", datapoints.len()));
+            ui.label(format!("{:.1} Mbit/s down", datapoints.mean_dl()));
+            ui.label(format!("{:.1} ms mean latency", datapoints.mean_latency()*1000.));
+            ui.label(format!("{} timeouts", datapoints.timeouts()));
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                 ui.add(
-                    egui::Hyperlink::new("https://github.com/emilk/egui/").text("powered by egui"),
+                    egui::Hyperlink::new("https://github.com/woelper/linetest/").text("github"),
                 );
             });
         });
