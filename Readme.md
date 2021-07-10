@@ -18,4 +18,7 @@ _A library to continuously measure, log and visualize throughput and latency of 
 
 ### Are there tools using this?
 - There is an extremely simple command line utility provided in `linetest-cli/`.
-- There is a gui application in development in `linetest-gui/`
+- There is a gui application in development in `linetest-gui/`. Grab it from the releases:
+https://github.com/woelper/linetest/releases/
+
+![shot](gui.png)
