@@ -1,5 +1,6 @@
 use gumdrop::Options;
 use linetest::{self, Measurable};
+use log::info;
 
 #[derive(Debug, Options)]
 struct MyOptions {
@@ -28,6 +29,10 @@ struct MyOptions {
 
 
 fn main() {
+    std::env::set_var("RUST_LOG", "warning");
+    let _ = env_logger::try_init();
+
+
     let opts = MyOptions::parse_args_default_or_exit();
 
     let mut measurement = linetest::Measurement::default();
@@ -40,9 +45,9 @@ fn main() {
             println!("{}", dp);
             measurement_result.push(dp);
             if let Some(log) = &measurement.logfile {
-                measurement_result.save(log);
+                info!("saving to {:?}", log);
+                measurement_result.save(log).unwrap();
             }
         }
     }
-
 }

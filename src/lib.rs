@@ -1,14 +1,14 @@
 use anyhow::Error;
 use chrono::{Datelike, Timelike, Utc};
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs::File, path::Path, sync::mpsc::{channel, Receiver}, thread::{self, sleep}, time::{Duration, SystemTime}};
+use std::{fmt, fs::{File, create_dir_all}, path::{Path, PathBuf}, sync::mpsc::{channel, Receiver}, thread::{self, sleep}, time::{Duration, SystemTime}};
 
 /// Latency measurement tools
 mod latency;
 /// Throughput measurement tools (Download speed)
 mod throughput;
 use log::{debug, info};
-type MeasurementResult = Vec<Datapoint>;
+pub type MeasurementResult = Vec<Datapoint>;
 
 pub trait Measurable {
     fn mean_dl(&self) -> f32 {
@@ -25,7 +25,14 @@ pub trait Measurable {
 
     fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
         unimplemented!()
+    }
 
+    fn load<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn duration(&self) -> Duration {
+        unimplemented!()
     }
 }
 
@@ -64,11 +71,50 @@ impl Measurable for MeasurementResult {
     }
     
     fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
+        // make sure parent dir exists
+        if let Some(parent) = path.as_ref().parent() {
+            if !parent.is_dir() {
+                create_dir_all(parent)?;
+            }
+        }
         let f= File::create(path.as_ref())?;
         serde_json::to_writer(f, self)?;
         Ok(())
     }
+
+    fn load<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+        *self = serde_json::from_reader(File::open(path.as_ref())?)?;
+        Ok(())
+    }
+
+    fn duration(&self) -> Duration {
+        if let Some(first) = self.first() {
+            if let Some(last) = self.last() {
+                match first {
+                    Datapoint::Latency(_, t) | Datapoint::ThroughputDown(_, t) | Datapoint::ThroughputUp(_,t) => {
+                        match last {
+                            Datapoint::Latency(_, t2) | Datapoint::ThroughputDown(_, t2) | Datapoint::ThroughputUp(_,t2) => {
+                                if let Ok(dur) = t2.duration_since(*t) {
+                                    return dur;
+                                }
+                            
+                            }
+                        }
+                    
+                    }
+                    
+                }
+            }
+        }
+        Duration::from_secs(0)
+    }
 }
+
+
+// fn load<P: AsRef<Path>>(&mut self, path: P) -> Result<MeasurementResult, Error> {
+//     Ok(serde_json::from_reader(File::open(path.as_ref())?)?)
+// }
+
 
 pub struct Measurement {
     /// The IP address to use for latency tests.
@@ -77,7 +123,7 @@ pub struct Measurement {
     pub result: MeasurementResult,
     pub ping_delay: Duration,
     pub throughput_delay: Duration,
-    pub logfile: Option<String>,
+    pub logfile: Option<PathBuf>,
 }
 
 impl Default for Measurement {
@@ -95,7 +141,7 @@ impl Default for Measurement {
             result: vec![],
             ping_delay: Duration::from_secs(7),
             throughput_delay: Duration::from_secs(30),
-            logfile: Some(format!("{}-{}-{}-{}", now.year(),now.month(), now.day(), now.minute()))
+            logfile: Some(Measurement::get_data_dir().join(format!("{}-{}-{}-{}h{}m.ltst", now.year(), now.month(), now.day(), now.hour(), now.minute())))
         }
     }
 }
@@ -131,6 +177,10 @@ impl Measurement {
         info!("Combined rayon: {:?}", throughput::to_mbits(d));
         // Ok(Datapoint::add_latency(Some(duration.as_secs_f32())))
         Ok(())
+    }
+
+    pub fn get_data_dir() -> PathBuf {
+        dirs::data_local_dir().unwrap_or(PathBuf::from(".")).join("linetest")
     }
 
     pub fn run_periodic(&self) -> Result<Receiver<Datapoint>, Error> {

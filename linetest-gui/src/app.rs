@@ -1,33 +1,24 @@
-use std::sync::mpsc::Receiver;
-use linetest::{self, Datapoint, Measurable};
+use super::get_logs;
 use eframe::{egui, epi};
 use egui::plot::{Line, Plot, Value, Values};
+use linetest::{self, Datapoint, Measurable, Measurement};
+use std::ffi::OsStr;
 use std::time::UNIX_EPOCH;
+use std::{path::PathBuf, sync::mpsc::Receiver};
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "persistence", serde(default))] // if we add new fields, give them default values when deserializing old state
-pub struct TemplateApp {
+pub struct LinetestApp {
     // Example stuff:
     // label: String,
-    pub receiver: Receiver<linetest::Datapoint>,
+    pub receiver: Option<Receiver<Datapoint>>,
     pub datapoints: Vec<Datapoint>,
-
-    // // this how you opt-out of serialization of a member
-    // #[cfg_attr(feature = "persistence", serde(skip))]
-    // value: f32,
+    pub logs: Vec<PathBuf>,
+    pub log_index: usize,
+    pub log_file: PathBuf,
 }
 
-// impl Default for TemplateApp {
-//     fn default() -> Self {
-//         Self {
-//             // Example stuff:
-//             label: "Hello World!".to_owned(),
-//             value: 2.7,
-//         }
-//     }
-// }
-
-impl epi::App for TemplateApp {
+impl epi::App for LinetestApp {
     fn name(&self) -> &str {
         "linetest"
     }
@@ -52,13 +43,17 @@ impl epi::App for TemplateApp {
             // value ,
             receiver,
             datapoints,
+            logs,
+            log_index,
+            log_file,
         } = self;
 
-      
-
         ctx.request_repaint();
-        for dp in receiver.try_recv() {
-            datapoints.push(dp);
+        if let Some(valid_receiver) = receiver {
+            for dp in valid_receiver.try_recv() {
+                datapoints.push(dp);
+                let _ = datapoints.save(&log_file);
+            }
         }
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -76,14 +71,55 @@ impl epi::App for TemplateApp {
             ui.heading("Info");
 
             ui.label(format!("{} samples", datapoints.len()));
+            ui.label(format!("Time: {:?}", datapoints.duration()));
             ui.label(format!("{:.1} Mbit/s down", datapoints.mean_dl()));
-            ui.label(format!("{:.1} ms mean latency", datapoints.mean_latency()*1000.));
+            ui.label(format!(
+                "{:.1} ms mean latency",
+                datapoints.mean_latency() * 1000.
+            ));
             ui.label(format!("{} timeouts", datapoints.timeouts()));
 
+            let mut selected = 0;
+
+            if egui::ComboBox::from_label("Log")
+                .show_index(ui, log_index, logs.len(), |i| {
+                    logs.get(i)
+                        .unwrap_or(&PathBuf::from("None"))
+                        .file_name()
+                        .unwrap_or(OsStr::new("no_file_name"))
+                        .to_string_lossy()
+                        .to_string()
+                })
+                .changed()
+            {
+                *receiver = None;
+                if let Some(log) = logs.get(*log_index) {
+                    datapoints.load(log).unwrap();
+                }
+            }
+
+            if receiver.is_none() {
+                if ui.button("New session").clicked() {
+                    let measurement = Measurement::default();
+                    if let Some(log) = &measurement.logfile {
+                        *log_file = log.clone();
+                    }
+                    *datapoints = vec![];
+                    if let Ok(new_rec) = measurement.run_periodic() {
+                        *receiver = Some(new_rec);
+                    }
+                }
+            } else {
+                if ui.button("Stop").clicked() {
+                    *receiver = None;
+                    if let Ok(new_logs) = get_logs() {
+                        *logs = new_logs;
+                    }
+                }
+            }
+
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
-                ui.add(
-                    egui::Hyperlink::new("https://github.com/woelper/linetest/").text("github"),
-                );
+                ui.add(egui::Hyperlink::new("https://github.com/woelper/linetest/").text("github"));
             });
         });
 
@@ -91,33 +127,31 @@ impl epi::App for TemplateApp {
             // The central panel the region left after adding TopPanel's and SidePanel's
 
             ui.heading("Latency (ms)");
-   
+
             let mut ping_values = vec![];
             let mut dl_values = vec![];
 
             for dp in datapoints {
                 match dp {
-                    Datapoint::Latency(ms, t) => ping_values.push(Value::new(t.duration_since(UNIX_EPOCH).unwrap().as_secs_f64(), ms.unwrap_or_default()*1000.)),
+                    Datapoint::Latency(ms, t) => ping_values.push(Value::new(
+                        t.duration_since(UNIX_EPOCH).unwrap().as_secs_f64(),
+                        ms.unwrap_or_default() * 1000.,
+                    )),
                     Datapoint::ThroughputUp(_, _) => todo!(),
-                    Datapoint::ThroughputDown(d, t) => dl_values.push(Value::new(t.duration_since(UNIX_EPOCH).unwrap().as_secs_f64(), d.unwrap_or_default())),
+                    Datapoint::ThroughputDown(d, t) => dl_values.push(Value::new(
+                        t.duration_since(UNIX_EPOCH).unwrap().as_secs_f64(),
+                        d.unwrap_or_default(),
+                    )),
                 }
             }
 
- 
             let latency_line = Line::new(Values::from_values(ping_values));
-            ui.add(
-                Plot::new("latency").line(latency_line).view_aspect(2.0)
-            );
+            ui.add(Plot::new("latency").line(latency_line).view_aspect(4.0));
 
             ui.heading("Download speed (Mbit/s)");
 
             let latency_line = Line::new(Values::from_values(dl_values));
-            ui.add(
-                Plot::new("dl").line(latency_line).view_aspect(2.0)
-            );
-
+            ui.add(Plot::new("dl").line(latency_line).view_aspect(4.0));
         });
-
- 
     }
 }

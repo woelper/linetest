@@ -11,6 +11,7 @@ license = "MIT"
 eframe = "0.13.0" # Gives us egui, epi and web+native backends
 serde = { version = "1", features = ["derive"], optional = true }
 linetest = { path = "../"}
+anyhow = "1.0.42"
 
 [features]
 default = []
