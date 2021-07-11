@@ -22,7 +22,7 @@ fn main() -> Result<(), Error> {
     let measurement = MeasurementController::default();
 
     // get a list of log files from this system
-    let logs = get_logs()?;
+    let logs = get_logs().unwrap_or_default();
 
     let app = app::LinetestApp {
         receiver: Some(measurement.run_periodic()?),
