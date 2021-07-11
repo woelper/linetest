@@ -1,23 +1,27 @@
+#![windows_subsystem = "windows"]
 mod app;
 use anyhow::{Error, Result};
-use linetest::Measurement;
+use linetest::MeasurementController;
 use std::fs::read_dir;
 use std::path::PathBuf;
-use std::time::Duration;
 
+/// discover all log files present on this system
 fn get_logs() -> Result<Vec<PathBuf>, Error> {
-    Ok(read_dir(Measurement::get_data_dir())?
+    Ok(read_dir(MeasurementController::get_data_dir())?
         .into_iter()
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .collect::<Vec<_>>())
 }
 
-// When compiling natively:
 fn main() -> Result<(), Error> {
-    let measurement = Measurement::default();
-    // measurement.ping_delay = Duration::from_secs(1);
+    // Start tool with warnings enabled
+    std::env::set_var("RUST_LOG", "warning");
+    let _ = env_logger::try_init();
 
+    let measurement = MeasurementController::default();
+
+    // get a list of log files from this system
     let logs = get_logs()?;
 
     let app = app::LinetestApp {

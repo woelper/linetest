@@ -1,7 +1,7 @@
 use super::get_logs;
 use eframe::{egui, epi};
 use egui::plot::{Line, Plot, Value, Values};
-use linetest::{self, Datapoint, Measurable, Measurement};
+use linetest::{self, Datapoint, Measurable, MeasurementController};
 use std::ffi::OsStr;
 use std::time::UNIX_EPOCH;
 use std::{path::PathBuf, sync::mpsc::Receiver};
@@ -50,7 +50,7 @@ impl epi::App for LinetestApp {
 
         ctx.request_repaint();
         if let Some(valid_receiver) = receiver {
-            for dp in valid_receiver.try_recv() {
+            for dp in valid_receiver.try_iter() {
                 datapoints.push(dp);
                 let _ = datapoints.save(&log_file);
             }
@@ -79,8 +79,6 @@ impl epi::App for LinetestApp {
             ));
             ui.label(format!("{} timeouts", datapoints.timeouts()));
 
-            let mut selected = 0;
-
             if egui::ComboBox::from_label("Log")
                 .show_index(ui, log_index, logs.len(), |i| {
                     logs.get(i)
@@ -100,7 +98,7 @@ impl epi::App for LinetestApp {
 
             if receiver.is_none() {
                 if ui.button("New session").clicked() {
-                    let measurement = Measurement::default();
+                    let measurement = MeasurementController::default();
                     if let Some(log) = &measurement.logfile {
                         *log_file = log.clone();
                     }
@@ -109,12 +107,10 @@ impl epi::App for LinetestApp {
                         *receiver = Some(new_rec);
                     }
                 }
-            } else {
-                if ui.button("Stop").clicked() {
-                    *receiver = None;
-                    if let Ok(new_logs) = get_logs() {
-                        *logs = new_logs;
-                    }
+            } else if ui.button("Stop").clicked() {
+                *receiver = None;
+                if let Ok(new_logs) = get_logs() {
+                    *logs = new_logs;
                 }
             }
 
