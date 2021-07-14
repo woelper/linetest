@@ -104,6 +104,49 @@ jobs:
         asset_name: linetest.exe
         asset_content_type: application/zip
 
+
+    - name: Build Cli
+      working-directory: ./linetest-cli
+      run: cargo build --release
+
+    - name: Upload Linux Cli
+      if: matrix.os == 'ubuntu-latest'
+      id: upload-release-asset-lin-cli
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.release_job.outputs.upload_url }}
+        asset_path: linetest-cli/target/release/linetest-cli
+        asset_name: linetest_cli_linux
+        asset_content_type: application/zip
+
+    - name: Upload Mac Cli
+      if: matrix.os == 'macOS-latest'
+      id: upload-release-asset-mac-cli
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.release_job.outputs.upload_url }}
+        asset_path: linetest-cli/target/release/linetest-cli
+        asset_name: linetest_cli_mac
+        asset_content_type: application/zip
+
+    - name: Upload Windows Cli
+      if: matrix.os == 'windows-latest'
+      id: upload-release-asset-windows-cli
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.release_job.outputs.upload_url }}
+        asset_path: linetest-cli/target/release/linetest-cli.exe
+        asset_name: linetest_cli.exe
+        asset_content_type: application/zip
+
+
+
   publish_release:
     name: Publish release
     needs: [build_job, release_job]
