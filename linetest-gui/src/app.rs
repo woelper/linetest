@@ -1,7 +1,7 @@
 use super::get_logs;
 use eframe::{egui, epi};
 use egui::plot::{Line, Plot, Value, Values};
-use linetest::{self, Datapoint, Measurable, MeasurementController};
+use linetest::{self, Datapoint, Evaluation, MeasurementBuilder};
 use std::ffi::OsStr;
 use std::time::UNIX_EPOCH;
 use std::{path::PathBuf, sync::mpsc::Receiver};
@@ -75,9 +75,12 @@ impl epi::App for LinetestApp {
             ui.label(format!("{:.1} Mbit/s down", datapoints.mean_dl()));
             ui.label(format!(
                 "{:.1} ms mean latency",
-                datapoints.mean_latency() * 1000.
+                datapoints.mean_latency().as_millis()
             ));
             ui.label(format!("{} timeouts", datapoints.timeouts()));
+            ui.label(format!("{} % timeout ", datapoints.timeouts_for_session()*100.));
+
+
 
             if egui::ComboBox::from_label("Log")
                 .show_index(ui, log_index, logs.len(), |i| {
@@ -98,7 +101,7 @@ impl epi::App for LinetestApp {
 
             if receiver.is_none() {
                 if ui.button("New session").clicked() {
-                    let measurement = MeasurementController::default();
+                    let measurement = MeasurementBuilder::default();
                     if let Some(log) = &measurement.logfile {
                         *log_file = log.clone();
                     }
@@ -131,7 +134,7 @@ impl epi::App for LinetestApp {
                 match dp {
                     Datapoint::Latency(ms, t) => ping_values.push(Value::new(
                         t.duration_since(UNIX_EPOCH).unwrap().as_secs_f64(),
-                        ms.unwrap_or_default() * 1000.,
+                        ms.unwrap_or_default().as_secs_f64() * 1000.,
                     )),
                     Datapoint::ThroughputUp(_, _) => todo!(),
                     Datapoint::ThroughputDown(d, t) => dl_values.push(Value::new(

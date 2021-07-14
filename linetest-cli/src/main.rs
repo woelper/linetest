@@ -1,9 +1,11 @@
+use std::time::Duration;
+
 use gumdrop::Options;
-use linetest::{self, Measurable};
+use linetest::{self, Evaluation};
 use log::info;
 
 #[derive(Debug, Options)]
-struct MyOptions {
+struct LinetestOptions {
     // // Contains "free" arguments -- those that are not options.
     // // If no `free` field is declared, free arguments will result in an error.
     // #[options(free)]
@@ -19,7 +21,7 @@ struct MyOptions {
     // A field can be any type that implements `FromStr`.
     // The optional `meta` attribute is displayed in `usage` text.
     #[options(help = "Time in seconds between pings")]
-    ping_interval: Option<i32>,
+    ping_delay: Option<u64>,
 
     // A `Vec` field will accumulate all values received from the command line.
     #[options(help = "Supply your own download urls")]
@@ -33,12 +35,25 @@ fn main() {
     let _ = env_logger::try_init();
 
 
-    let opts = MyOptions::parse_args_default_or_exit();
+    let opts = LinetestOptions::parse_args_default_or_exit();
 
-    let mut measurement = linetest::Measurement::default();
+    let mut measurement = linetest::MeasurementBuilder::default();
+
+    if !opts.download_urls.is_empty() {
+        measurement.downloads_urls = opts.download_urls
+    }
+
+    if let Some(s) = opts.ping_delay {
+        measurement.ping_delay = Duration::from_secs(s);
+    }
 
     let receiver = measurement.run_periodic().unwrap();
     let mut measurement_result = vec![];
+    println!("=== Linetest starting ===");
+
+    if let Some(log) = &measurement.logfile {
+        println!("Logging to {}", log.to_string_lossy());
+    }
 
     loop {
         for dp in &receiver {

@@ -5,9 +5,7 @@ use std::{
     fmt,
     fs::{create_dir_all, File},
     path::{Path, PathBuf},
-    sync::{
-        mpsc::{channel, Receiver},
-    },
+    sync::mpsc::{channel, Receiver},
     thread::{self, sleep},
     time::{Duration, SystemTime},
 };
@@ -17,35 +15,52 @@ mod latency;
 /// Throughput measurement tools (Download speed)
 mod throughput;
 use log::{debug, info};
+
+/// The result of a measurement, just a Vec of [Datapoint]s.
 pub type MeasurementResult = Vec<Datapoint>;
 
-pub trait Measurable {
+/// A couple of analyis methods on a [MeasurementResult]
+pub trait Evaluation {
+    /// Mean download speed for a measurement
     fn mean_dl(&self) -> f32 {
         unimplemented!()
     }
 
-    fn mean_latency(&self) -> f32 {
+    /// Mean latency for a measurement
+    fn mean_latency(&self) -> Duration {
         unimplemented!()
     }
 
+    /// Sum of all timeouts in a measurement
     fn timeouts(&self) -> usize {
         unimplemented!()
     }
 
-    fn save<P: AsRef<Path>>(&self, _path: P) -> Result<(), Error> {
+    /// Fraction of timeouts fot the measurements, 0-1, where
+    /// 0 is perfect availability and 1 is complete data loss.
+    fn timeouts_for_session(&self) -> f32 {
         unimplemented!()
     }
 
-    fn load<P: AsRef<Path>>(&mut self, _path: P) -> Result<(), Error> {
+    /// Save the measurement to a file
+    #[allow(unused_variables)]
+    fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
         unimplemented!()
     }
 
+    /// Load a file into a measurement
+    #[allow(unused_variables)]
+    fn load<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    /// Total duration of a measurement, from first sample to last
     fn duration(&self) -> Duration {
         unimplemented!()
     }
 }
 
-impl Measurable for MeasurementResult {
+impl Evaluation for MeasurementResult {
     fn mean_dl(&self) -> f32 {
         let count = self
             .iter()
@@ -56,13 +71,12 @@ impl Measurable for MeasurementResult {
             .count();
 
         self.iter().fold(0.0, |acc, e| match e {
-            //TODO: using anything as mean calculation is not good, maybe skip these values?
             Datapoint::ThroughputDown(dn, _t) => acc + dn.unwrap_or_default(),
             _ => acc,
         }) / count as f32
     }
 
-    fn mean_latency(&self) -> f32 {
+    fn mean_latency(&self) -> Duration {
         let count = self
             .iter()
             .filter(|e| match e {
@@ -71,11 +85,17 @@ impl Measurable for MeasurementResult {
             })
             .count();
 
-        self.iter().fold(0.0, |acc, e| match e {
-            //TODO: using anything as mean calculation is not good, maybe skip these values?
-            Datapoint::Latency(l, _t) => acc + l.unwrap_or(0.),
-            _ => acc,
-        }) / count as f32
+        self.iter()
+            .filter(|e| match e {
+                Datapoint::Latency(d, _) => d.is_some(),
+                _ => false,
+            })
+            .fold(Duration::from_secs(0), |acc, e| match e {
+                //TODO: using anything as mean calculation is not good, maybe skip these values?
+                Datapoint::Latency(l, _t) => acc + l.unwrap_or(Duration::from_secs(0)),
+                _ => acc,
+            })
+            / count as u32
     }
 
     fn timeouts(&self) -> usize {
@@ -85,6 +105,10 @@ impl Measurable for MeasurementResult {
                 _ => false,
             })
             .count()
+    }
+
+    fn timeouts_for_session(&self) -> f32 {
+        self.timeouts() as f32 / self.len() as f32
     }
 
     fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
@@ -126,45 +150,45 @@ impl Measurable for MeasurementResult {
     }
 }
 
-// fn load<P: AsRef<Path>>(&mut self, path: P) -> Result<MeasurementResult, Error> {
-//     Ok(serde_json::from_reader(File::open(path.as_ref())?)?)
-// }
-
-pub struct MeasurementController {
-    /// The IP address to use for latency tests.
+/// A structure to set up and start a network measurement
+pub struct MeasurementBuilder {
+    /// The IP address to use for latency tests. Currently, only  the first one is used.
     pub ping_ips: Vec<String>,
-    pub downloads: Vec<String>,
-    pub result: MeasurementResult,
+    /// the urls of files to download. The speedtest will be evaluated by downloading all of them
+    /// in parallel and measuring the time.
+    pub downloads_urls: Vec<String>,
+    /// The delay between pings
     pub ping_delay: Duration,
+    /// The path to a logfile. Will be used if not `None`.
     pub logfile: Option<PathBuf>,
 }
 
-impl Default for MeasurementController {
+impl Default for MeasurementBuilder {
     fn default() -> Self {
         let now = Utc::now();
         Self {
             ping_ips: vec!["8.8.8.8".to_string()],
-            downloads: vec![
+            downloads_urls: vec![
                 "https://github.com/aseprite/aseprite/releases/download/v1.2.27/Aseprite-v1.2.27-Source.zip".to_string(),
                 "https://dl.google.com/drive-file-stream/GoogleDriveSetup.exe".to_string(),
                 "https://awscli.amazonaws.com/AWSCLIV2.msi".to_string(),
                 "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip".to_string(),
             ],
-            result: vec![],
             ping_delay: Duration::from_secs(7),
-            logfile: Some(MeasurementController::get_data_dir().join(format!("{}-{}-{}-{}h{}m.ltst", now.year(), now.month(), now.day(), now.hour(), now.minute())))
+            logfile: Some(MeasurementBuilder::get_data_dir().join(format!("{}-{}-{}-{}h{}m.ltst", now.year(), now.month(), now.day(), now.hour(), now.minute())))
         }
     }
 }
 
-impl MeasurementController {
+impl MeasurementBuilder {
     /// Generate a default measurement
     pub fn new() -> Self {
-        MeasurementController::default()
+        MeasurementBuilder::default()
     }
 
     /// Execute a measurement once
-    pub fn run(&mut self) -> Result<(), Error> {
+    pub fn run(&self) -> Result<MeasurementResult, Error> {
+        let mut result: MeasurementResult = vec![];
         latency::ping_callback(
             &self
                 .ping_ips
@@ -173,30 +197,29 @@ impl MeasurementController {
                 .clone(),
             |duration_result| {
                 match duration_result {
-                    Some(duration) => self
-                        .result
-                        .push(Datapoint::add_latency(Some(duration.as_secs_f32()))),
-                    None => self.result.push(Datapoint::add_latency(None)),
+                    Some(duration) => result.push(Datapoint::add_latency(Some(duration))),
+                    None => result.push(Datapoint::add_latency(None)),
                 };
             },
         )?;
 
-        info!("Seq: {:?}", self.result);
+        debug!("Seq: {:?}", result);
 
-        let d = throughput::combined_download(&self.downloads).unwrap();
-        info!("Combined rayon: {:?}", d);
-        info!("Combined rayon: {:?}", throughput::to_mbits(d));
-        // Ok(Datapoint::add_latency(Some(duration.as_secs_f32())))
-        Ok(())
+        let mbits = throughput::combined_download(&self.downloads_urls)
+            .ok()
+            .map(|dl| throughput::to_mbits(dl));
+        result.push(Datapoint::add_tp_down(mbits));
+        Ok(result)
     }
 
+    /// Return the directory containing measurement results
     pub fn get_data_dir() -> PathBuf {
         dirs::data_local_dir()
             .unwrap_or(PathBuf::from("."))
             .join("linetest")
     }
 
-    /// Run periodic measurements
+    /// Run periodic measurements to a Receiver containing [Datapoint]s
     pub fn run_periodic(&self) -> Result<Receiver<Datapoint>, Error> {
         //define how many latency tests to perform before running a download test
         let latency_download_ratio = 10;
@@ -211,7 +234,7 @@ impl MeasurementController {
             .clone();
         let ping_sender = sender.clone();
 
-        let download_urls = self.downloads.clone();
+        let download_urls = self.downloads_urls.clone();
 
         thread::spawn(move || {
             let mut stop = false;
@@ -228,7 +251,7 @@ impl MeasurementController {
                         match duration_result {
                             Some(duration) => {
                                 stop = ping_sender
-                                    .send(Datapoint::add_latency(Some(duration.as_secs_f32())))
+                                    .send(Datapoint::add_latency(Some(duration)))
                                     .is_err()
                             }
                             None => stop = ping_sender.send(Datapoint::add_latency(None)).is_err(),
@@ -259,17 +282,17 @@ impl MeasurementController {
 }
 
 /// A single data point, containing different possible measurements. All of them
-/// are time stamped.
+/// are time stamped. If a measurement failed, the `Option` is `None`.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Datapoint {
-    Latency(Option<f32>, SystemTime),
+    Latency(Option<Duration>, SystemTime),
     ThroughputUp(Option<f32>, SystemTime),
     ThroughputDown(Option<f32>, SystemTime),
 }
 
 impl Datapoint {
     /// Add a latency `Datapoint`
-    pub fn add_latency(latency: Option<f32>) -> Self {
+    pub fn add_latency(latency: Option<Duration>) -> Self {
         Datapoint::Latency(latency, SystemTime::now())
     }
 
@@ -290,7 +313,7 @@ impl fmt::Display for Datapoint {
             Datapoint::Latency(l, _t) => write!(
                 f,
                 "Ping: {} ms",
-                l.map(|d| (d * 1000.).to_string())
+                l.map(|d| (d.as_secs_f32() * 1000.).to_string())
                     .unwrap_or("Timeout".to_string())
             ),
             Datapoint::ThroughputUp(up, _t) => write!(
@@ -324,9 +347,7 @@ mod tests {
             info!("Ping {}", i);
             latency::ping_callback("8.8.8.8", |duration_result| {
                 match duration_result {
-                    Some(duration) => {
-                        log.push(Datapoint::add_latency(Some(duration.as_secs_f32())))
-                    }
+                    Some(duration) => log.push(Datapoint::add_latency(Some(duration))),
                     None => log.push(Datapoint::add_latency(None)),
                 };
             })
@@ -341,10 +362,8 @@ mod tests {
     fn throughput_all_urls() {
         std::env::set_var("RUST_LOG", "debug");
         let _ = env_logger::try_init();
-
-        let measurement = MeasurementController::default();
-
-        for url in measurement.downloads {
+        let measurement = MeasurementBuilder::default();
+        for url in measurement.downloads_urls {
             let res = throughput::measured_download(&url).unwrap();
             info!("DL {} => {:?}", url, &res);
         }
@@ -354,10 +373,7 @@ mod tests {
     fn run() {
         std::env::set_var("RUST_LOG", "info");
         let _ = env_logger::try_init();
-
-        let mut measurement = MeasurementController::default();
+        let measurement = MeasurementBuilder::default();
         measurement.run().unwrap();
-
-        // info!("{:?}", measurement.result);
     }
 }
