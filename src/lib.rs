@@ -312,18 +312,18 @@ impl fmt::Display for Datapoint {
         match *self {
             Datapoint::Latency(l, _t) => write!(
                 f,
-                "Ping: {} ms",
+                "Ping:\t{:.2} ms",
                 l.map(|d| (d.as_secs_f32() * 1000.).to_string())
                     .unwrap_or("Timeout".to_string())
             ),
             Datapoint::ThroughputUp(up, _t) => write!(
                 f,
-                "Upload speed: {} Mbit/s",
+                "Upload speed: {:.1} Mbit/s",
                 up.map(|d| d.to_string()).unwrap_or("Timeout".to_string())
             ),
             Datapoint::ThroughputDown(dn, _t) => write!(
                 f,
-                "Download speed: {} Mbit/s",
+                "Speed:\t{} Mbit/s",
                 dn.map(|d| d.to_string()).unwrap_or("Timeout".to_string())
             ),
         }

@@ -1,8 +1,16 @@
 use std::time::Duration;
 
 use gumdrop::Options;
-use linetest::{self, Evaluation};
-use log::info;
+use linetest::{self, Datapoint, Evaluation};
+use std::io::{stdout};
+
+use crossterm::style::{Color, Colors, Print, SetColors};
+use crossterm::{
+    cursor::{Hide, RestorePosition, SavePosition},
+    execute,
+    terminal::{Clear, ClearType},
+    Result,
+};
 
 #[derive(Debug, Options)]
 struct LinetestOptions {
@@ -10,8 +18,6 @@ struct LinetestOptions {
     // // If no `free` field is declared, free arguments will result in an error.
     // #[options(free)]
     // free: Vec<String>,
-
-
 
     // // Non-boolean fields will take a value from the command line.
     // // Wrapping the type in an `Option` is not necessary, but provides clarity.
@@ -26,14 +32,83 @@ struct LinetestOptions {
     // A `Vec` field will accumulate all values received from the command line.
     #[options(help = "Supply your own download urls")]
     download_urls: Vec<String>,
-
 }
 
+/// Primitive function to draw the results
+fn draw_ui(result: &linetest::MeasurementResult) -> Result<()> {
+    execute!(
+        stdout(),
+        //SetColors(Colors::new(Green, Black)),
+        Clear(ClearType::CurrentLine),
+        SavePosition,
+        Hide
+    )?;
+
+
+    let mut dp_ping: Option<&Datapoint> = None;
+    let mut dp_dl: Option<&Datapoint> = None;
+
+
+    for res in result {
+        match res {
+            Datapoint::Latency(_l, _t) => {
+                dp_ping = Some(res);
+            }
+            Datapoint::ThroughputDown(_tp, _t) => {
+                // dbg!("dn");
+                dp_dl = Some(res);
+            }
+            _ => (),
+        }
+    }
+
+
+
+    match dp_ping {
+        Some(dp) => {
+            execute!(
+                stdout(),
+                Print(format!("{}", dp)),
+            )?;
+        },
+        None => {
+            execute!(
+                stdout(),
+                Print("Please wait..."),
+            )?;
+        }
+    }
+
+    match dp_dl {
+        Some(dp) => {
+            execute!(
+                stdout(),
+                Print(format!("\n{}", dp)),
+            )?;
+        },
+        None => {
+            execute!(
+                stdout(),
+                Print("\nSpeed:\tPlease wait..."),
+            )?;
+        }
+    }
+    
+
+    execute!(
+        stdout(),
+        RestorePosition
+    )?;
+
+    Ok(())
+}
 
 fn main() {
     std::env::set_var("RUST_LOG", "warning");
-    let _ = env_logger::try_init();
+    // #[cfg(debug_assertions)]
+    // std::env::set_var("RUST_LOG", "info");
 
+    let _ = env_logger::try_init();
 
     let opts = LinetestOptions::parse_args_default_or_exit();
 
@@ -49,20 +124,20 @@ fn main() {
 
     let receiver = measurement.run_periodic().unwrap();
     let mut measurement_result = vec![];
-    println!("=== Linetest starting ===");
 
+    println!("[[[ Linetest ]]]");
     if let Some(log) = &measurement.logfile {
-        println!("Logging to {}", log.to_string_lossy());
+        println!("=> This session is recorded to {}", log.to_string_lossy());
     }
 
     loop {
         for dp in &receiver {
-            println!("{}", dp);
             measurement_result.push(dp);
             if let Some(log) = &measurement.logfile {
-                info!("saving to {:?}", log);
+                // save each entry
                 measurement_result.save(log).unwrap();
             }
+            draw_ui(&measurement_result).unwrap();
         }
     }
 }

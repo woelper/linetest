@@ -10,3 +10,4 @@ linetest = {path = "../"}
 gumdrop = "*"
 log = "*"
 env_logger = "*"
+crossterm = "0.20"
