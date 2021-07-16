@@ -65,7 +65,7 @@ jobs:
 
     - name: Zip Mac Bundle
       working-directory: ./linetest-gui
-      run: mv target/release/bundle/osx/linetest.app . && zip -r linetest_app.zip linetest.app
+      run: mv target/release/bundle/osx/linetest.app linetest-gui.app && zip -r linetest_app.zip linetest-gui.app
       if: matrix.os == 'macOS-latest'
 
     - name: Upload Linux Release
