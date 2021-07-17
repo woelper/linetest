@@ -346,12 +346,14 @@ mod tests {
         for i in 1..10 {
             info!("Ping {}", i);
             latency::ping_callback("8.8.8.8", |duration_result| {
+                info!("res {:?}", duration_result);
+
                 match duration_result {
                     Some(duration) => log.push(Datapoint::add_latency(Some(duration))),
                     None => log.push(Datapoint::add_latency(None)),
                 };
             })
-            .unwrap();
+            .expect("Can't ping on this system");
         }
 
         info!("{:?}", &log);

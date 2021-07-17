@@ -4,6 +4,7 @@ use anyhow::{Error, Result};
 use linetest::MeasurementBuilder;
 use std::fs::read_dir;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 /// discover all log files present on this system
 fn get_logs() -> Result<Vec<PathBuf>, Error> {
@@ -30,6 +31,7 @@ fn main() -> Result<(), Error> {
         logs,
         log_index: 0,
         log_file: measurement.logfile.unwrap_or_default(),
+        startup_time: SystemTime::now()
     };
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(Box::new(app), native_options);
