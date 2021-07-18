@@ -29,12 +29,10 @@ impl Default for LinetestApp {
             logs: MeasurementBuilder::get_logs().unwrap_or_default(),
             log_index: 0,
             log_file: PathBuf::new(),
-            dark_mode: false
+            dark_mode: false,
         }
     }
 }
-
-
 
 impl epi::App for LinetestApp {
     fn name(&self) -> &str {
