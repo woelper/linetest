@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use gumdrop::Options;
+use structopt::StructOpt;
 use linetest::{self, Datapoint, Evaluation};
 use std::io::{stdout};
 
@@ -12,25 +12,14 @@ use crossterm::{
     Result,
 };
 
-#[derive(Debug, Options)]
+#[derive(StructOpt, Debug)]
+#[structopt(name = "basic")]
 struct LinetestOptions {
-    // // Contains "free" arguments -- those that are not options.
-    // // If no `free` field is declared, free arguments will result in an error.
-    // #[options(free)]
-    // free: Vec<String>,
-
-    // // Non-boolean fields will take a value from the command line.
-    // // Wrapping the type in an `Option` is not necessary, but provides clarity.
-    // #[options(help = "give a string argument")]
-    // string: Option<String>,
-
-    // A field can be any type that implements `FromStr`.
-    // The optional `meta` attribute is displayed in `usage` text.
-    #[options(help = "Time in seconds between pings")]
+ 
+    #[structopt(short, long)]
     ping_delay: Option<u64>,
 
-    // A `Vec` field will accumulate all values received from the command line.
-    #[options(help = "Supply your own download urls")]
+    #[structopt(short, long)]
     download_urls: Vec<String>,
 }
 
@@ -110,7 +99,7 @@ fn main() {
 
     let _ = env_logger::try_init();
 
-    let opts = LinetestOptions::parse_args_default_or_exit();
+    let opts = LinetestOptions::from_args();
 
     let mut measurement = linetest::MeasurementBuilder::default();
 
