@@ -12,9 +12,9 @@ _A library to continuously measure, log and visualize throughput and latency of 
 
 ### How is data being gathered?
 
-- Latency is currently evaluated by pinging `8.8.8.8`. This is configurable. Later this might be a list of hosts that has a candidate randomly picked or sourced from a mean value over multiple.
+- Latency is currently evaluated by pinging `8.8.8.8`. This is configurable. Later this might be a list of hosts which have a candidate randomly picked or sourced from a mean value over multiple.
 
-- Download speed is currently evaluated by downloading a series of ~20-50MB files from google and AWS in parallel. The total byte size is then divided by the actual time passed until all complete. While this is not the maximum your line could theoretically provide, it should give an indication about the real world throughput.
+- Download speed is currently evaluated by downloading a series of ~20-50MB files from google, github and AWS in parallel. The total byte size is then divided by the actual time passed until all complete. While this is not the maximum your line could theoretically provide, it should give an indication about the real world throughput.
 
 ### Are there tools using this?
 - There is an extremely simple command line utility provided in `linetest-cli/`.

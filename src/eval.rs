@@ -73,6 +73,11 @@ impl Evaluation for MeasurementResult {
                 _ => false,
             })
             .count();
+        
+        // prevent div/0 error
+        if count == 0 {
+            return Duration::from_secs(0);
+        }
 
         self.iter()
             .filter(|e| match e {

@@ -13,6 +13,7 @@ serde = { version = "1", features = ["derive"], optional = true }
 linetest = { path = "../"}
 anyhow = "1.0.42"
 env_logger = "*"
+log = "*"
 
 [features]
 default = []

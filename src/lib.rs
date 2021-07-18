@@ -1,13 +1,7 @@
 use anyhow::Error;
 use chrono::{Datelike, Timelike, Utc};
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt,
-    path::{PathBuf},
-    sync::mpsc::{channel, Receiver},
-    thread::{self, sleep},
-    time::{Duration, SystemTime},
-};
+use std::{fmt, fs::read_dir, path::{PathBuf}, sync::mpsc::{channel, Receiver}, thread::{self, sleep}, time::{Duration, SystemTime}};
 use log::{debug, info};
 
 /// Latency measurement tools
@@ -59,8 +53,25 @@ impl MeasurementBuilder {
         MeasurementBuilder::default()
     }
 
+    /// Return the directory containing measurement results
+    pub fn get_data_dir() -> PathBuf {
+        dirs::data_local_dir()
+            .unwrap_or(PathBuf::from("."))
+            .join("linetest")
+    }
+
+
+    // discover all log files present on this system
+    pub fn get_logs() -> Result<Vec<PathBuf>, Error> {
+        Ok(read_dir(Self::get_data_dir())?
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .collect::<Vec<_>>())
+    }
+
     /// Execute a measurement once
-    pub fn run(&self) -> Result<MeasurementResult, Error> {
+    pub fn run_once(&self) -> Result<MeasurementResult, Error> {
         let mut result: MeasurementResult = vec![];
         latency::ping_callback(
             &self
@@ -84,16 +95,16 @@ impl MeasurementBuilder {
         result.push(Datapoint::add_tp_down(mbits));
         Ok(result)
     }
+    pub fn run_until_receiver_drops(&self) -> Result<Receiver<Datapoint>, Error> {
+        self.run_advanced(None)
+    }
 
-    /// Return the directory containing measurement results
-    pub fn get_data_dir() -> PathBuf {
-        dirs::data_local_dir()
-            .unwrap_or(PathBuf::from("."))
-            .join("linetest")
+    pub fn run_until_duration(&self, duration: Duration) -> Result<Receiver<Datapoint>, Error> {
+        self.run_advanced(Some(duration))
     }
 
     /// Run periodic measurements to a Receiver containing [Datapoint]s
-    pub fn run_periodic(&self) -> Result<Receiver<Datapoint>, Error> {
+    pub fn run_advanced(&self, duration: Option<Duration>) -> Result<Receiver<Datapoint>, Error> {
         //define how many latency tests to perform before running a download test
         let latency_download_ratio = 10;
 
@@ -110,8 +121,19 @@ impl MeasurementBuilder {
         let download_urls = self.downloads_urls.clone();
 
         thread::spawn(move || {
+            info!("Start thread");
+
+            let start = SystemTime::now();
             let mut stop = false;
             loop {
+
+                if let Some(d)= duration {
+                    if start.elapsed().unwrap_or_default() > d {
+                        info!("Test concluded after specified duration ({:?})", d);
+                        break;
+                    }
+                }
+
                 if stop {
                     break;
                 }
@@ -147,6 +169,9 @@ impl MeasurementBuilder {
                     .send(Datapoint::add_tp_down(download_result))
                     .is_err();
             }
+
+
+
             info!("Stopping thread");
         });
 
@@ -249,6 +274,59 @@ mod tests {
         std::env::set_var("RUST_LOG", "info");
         let _ = env_logger::try_init();
         let measurement = MeasurementBuilder::default();
-        measurement.run().unwrap();
+        measurement.run_once().unwrap();
     }
+
+
+    #[test]
+    fn gen_save() {
+        std::env::set_var("RUST_LOG", "debug");
+        let _ = env_logger::try_init();
+
+        let mut measurement = MeasurementBuilder::default();
+        measurement.logfile = Some(MeasurementBuilder::get_data_dir().join("example_manual.ltst"));
+        measurement.ping_delay = Duration::from_secs(2);
+        
+        let mut log: MeasurementResult = vec![];
+
+        for i in 1..10 {
+            info!("Ping {}", i);
+            latency::ping_callback("8.8.8.8", |duration_result| {
+                info!("res {:?}", duration_result);
+
+                thread::sleep(measurement.ping_delay);
+
+                match duration_result {
+                    Some(duration) => log.push(Datapoint::add_latency(Some(duration))),
+                    None => log.push(Datapoint::add_latency(None)),
+                };
+
+                // thread::sleep(measurement.ping_delay);
+
+                // log.push(Datapoint::add_latency(None));
+
+            })
+            .expect("Can't ping on this system");
+        }
+
+        log.save(measurement.logfile.unwrap()).unwrap();
+
+        let mut auto_log = vec![];
+        measurement.logfile = Some(MeasurementBuilder::get_data_dir().join("example_auto.ltst"));
+        let receiver = measurement.run_until_duration(Duration::from_secs(20)).unwrap();
+
+        info!("sleeping");
+        thread::sleep(Duration::from_secs(25));
+        info!("sleeping done");
+
+        for dp in receiver.try_iter() {
+            auto_log.push(dp);
+
+        }
+        auto_log.save(measurement.logfile.unwrap()).unwrap();
+
+
+    }
+
+
 }

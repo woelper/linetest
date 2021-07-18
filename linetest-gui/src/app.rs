@@ -1,11 +1,11 @@
-use super::get_logs;
 use eframe::egui::plot::Points;
-use eframe::egui::Color32;
+use eframe::egui::{Color32, Visuals};
 use eframe::{egui, epi};
 use egui::plot::{Line, Plot, Value, Values};
 use linetest::{self, Datapoint, Evaluation, MeasurementBuilder};
+use log::info;
 use std::ffi::OsStr;
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{path::PathBuf, sync::mpsc::Receiver};
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
@@ -18,8 +18,23 @@ pub struct LinetestApp {
     pub logs: Vec<PathBuf>,
     pub log_index: usize,
     pub log_file: PathBuf,
-    pub startup_time: SystemTime,
+    pub dark_mode: bool,
 }
+
+impl Default for LinetestApp {
+    fn default() -> Self {
+        Self {
+            receiver: None,
+            datapoints: vec![],
+            logs: MeasurementBuilder::get_logs().unwrap_or_default(),
+            log_index: 0,
+            log_file: PathBuf::new(),
+            dark_mode: false
+        }
+    }
+}
+
+
 
 impl epi::App for LinetestApp {
     fn name(&self) -> &str {
@@ -46,8 +61,10 @@ impl epi::App for LinetestApp {
             logs,
             log_index,
             log_file,
-            startup_time,
+            dark_mode,
         } = self;
+
+        let line_color = Color32::GRAY;
 
         ctx.request_repaint();
         if let Some(valid_receiver) = receiver {
@@ -57,12 +74,21 @@ impl epi::App for LinetestApp {
             }
         }
 
+        if *dark_mode {
+            ctx.set_visuals(egui::Visuals::dark());
+        } else {
+            ctx.set_visuals(egui::Visuals::light());
+        }
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
                 egui::menu::menu(ui, "File", |ui| {
                     if ui.button("Quit").clicked() {
                         frame.quit();
+                    }
+                    if ui.button("Toggle light/dark").clicked() {
+                        *dark_mode = !*dark_mode;
                     }
                 });
             });
@@ -96,25 +122,27 @@ impl epi::App for LinetestApp {
                 .changed()
             {
                 *receiver = None;
+                datapoints.clear();
                 if let Some(log) = logs.get(*log_index) {
                     datapoints.load(log).unwrap();
+                    info!("Loaded {} data points", datapoints.len());
                 }
             }
 
             if receiver.is_none() {
-                if ui.button("New session").clicked() {
+                if ui.button("⏺ Start recording").clicked() {
                     let measurement = MeasurementBuilder::default();
                     if let Some(log) = &measurement.logfile {
                         *log_file = log.clone();
                     }
                     *datapoints = vec![];
-                    if let Ok(new_rec) = measurement.run_periodic() {
+                    if let Ok(new_rec) = measurement.run_until_receiver_drops() {
                         *receiver = Some(new_rec);
                     }
                 }
-            } else if ui.button("Stop").clicked() {
+            } else if ui.button("⏹ Stop").clicked() {
                 *receiver = None;
-                if let Ok(new_logs) = get_logs() {
+                if let Ok(new_logs) = MeasurementBuilder::get_logs() {
                     *logs = new_logs;
                 }
             }
@@ -131,6 +159,15 @@ impl epi::App for LinetestApp {
             let mut dl_values = vec![];
             let mut timeout_values = vec![];
 
+            let first_instant: SystemTime = match datapoints.first() {
+                Some(dp) => match dp {
+                    Datapoint::Latency(_, ms)
+                    | Datapoint::ThroughputDown(_, ms)
+                    | Datapoint::ThroughputUp(_, ms) => *ms,
+                },
+                None => UNIX_EPOCH,
+            };
+
             for dp in datapoints {
                 match dp {
                     Datapoint::Latency(maybe_ms, t) =>
@@ -138,33 +175,33 @@ impl epi::App for LinetestApp {
                     {
                         match maybe_ms {
                             Some(ms) => ping_values.push(Value::new(
-                                t.duration_since(*startup_time)
-                                    .unwrap_or_default()
+                                t.duration_since(first_instant)
+                                    .expect("can't set duration")
                                     .as_secs_f64(),
                                 ms.as_secs_f64() * 1000.,
                             )),
                             None => {
                                 // mark as timeout
                                 timeout_values.push(Value::new(
-                                    t.duration_since(*startup_time)
-                                        .unwrap_or_default()
+                                    t.duration_since(first_instant)
+                                        .expect("can't set duration")
                                         .as_secs_f64(),
                                     4.0,
                                 ));
-                                // also set to a value ()
+                                // also set to a value
                                 ping_values.push(Value::new(
-                                    t.duration_since(*startup_time)
-                                        .unwrap_or_default()
+                                    t.duration_since(first_instant)
+                                        .expect("can't set duration")
                                         .as_secs_f64(),
-                                    0.,
+                                    0.01,
                                 ))
                             }
                         }
                     }
                     Datapoint::ThroughputUp(_, _) => todo!(),
                     Datapoint::ThroughputDown(d, t) => dl_values.push(Value::new(
-                        t.duration_since(*startup_time)
-                            .unwrap_or_default()
+                        t.duration_since(first_instant)
+                            .expect("can't set duration")
                             .as_secs_f64(),
                         d.unwrap_or_default(),
                     )),
@@ -172,7 +209,7 @@ impl epi::App for LinetestApp {
             }
 
             ui.heading("Latency (ms)");
-            let latency_line = Line::new(Values::from_values(ping_values)).color(Color32::GOLD);
+            let latency_line = Line::new(Values::from_values(ping_values)).color(line_color);
             let timeouts = Points::new(Values::from_values(timeout_values))
                 .filled(true)
                 .radius(8.)
@@ -181,15 +218,15 @@ impl epi::App for LinetestApp {
                 .shape(egui::plot::MarkerShape::Down);
             ui.add(
                 Plot::new("latency")
-                    .points(timeouts)
                     .line(latency_line)
+                    .points(timeouts)
                     .view_aspect(4.0),
             );
 
             ui.heading("Download speed (Mbit/s)");
 
-            let latency_line = Line::new(Values::from_values(dl_values)).color(Color32::GOLD);
-            ui.add(Plot::new("dl").line(latency_line).view_aspect(4.0));
+            let download_line = Line::new(Values::from_values(dl_values)).color(line_color);
+            ui.add(Plot::new("dl").line(download_line).view_aspect(4.0));
         });
     }
 }
