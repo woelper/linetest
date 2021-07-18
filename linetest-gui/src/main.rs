@@ -31,7 +31,7 @@ fn main() -> Result<(), Error> {
         logs,
         log_index: 0,
         log_file: measurement.logfile.unwrap_or_default(),
-        startup_time: SystemTime::now()
+        startup_time: SystemTime::now(),
     };
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(Box::new(app), native_options);

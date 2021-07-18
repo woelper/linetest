@@ -1,11 +1,11 @@
 use super::get_logs;
-use eframe::egui::Color32;
 use eframe::egui::plot::Points;
+use eframe::egui::Color32;
 use eframe::{egui, epi};
 use egui::plot::{Line, Plot, Value, Values};
 use linetest::{self, Datapoint, Evaluation, MeasurementBuilder};
 use std::ffi::OsStr;
-use std::time::{SystemTime};
+use std::time::SystemTime;
 use std::{path::PathBuf, sync::mpsc::Receiver};
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
@@ -18,7 +18,7 @@ pub struct LinetestApp {
     pub logs: Vec<PathBuf>,
     pub log_index: usize,
     pub log_file: PathBuf,
-    pub startup_time: SystemTime
+    pub startup_time: SystemTime,
 }
 
 impl epi::App for LinetestApp {
@@ -79,9 +79,10 @@ impl epi::App for LinetestApp {
                 datapoints.mean_latency().as_millis()
             ));
             ui.label(format!("{} timeouts", datapoints.timeouts()));
-            ui.label(format!("{:.1} % timeout ", datapoints.timeouts_for_session()*100.));
-
-
+            ui.label(format!(
+                "{:.1} % timeout ",
+                datapoints.timeouts_for_session() * 100.
+            ));
 
             if egui::ComboBox::from_label("Log")
                 .show_index(ui, log_index, logs.len(), |i| {
@@ -126,56 +127,68 @@ impl epi::App for LinetestApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
 
-            
             let mut ping_values = vec![];
             let mut dl_values = vec![];
             let mut timeout_values = vec![];
-            
+
             for dp in datapoints {
                 match dp {
-                    Datapoint::Latency(maybe_ms, t) => 
+                    Datapoint::Latency(maybe_ms, t) =>
                     // check if this is a timeout
-                    match maybe_ms {
-                        Some(ms) => ping_values.push(
-                            Value::new(
-                            t.duration_since(*startup_time).unwrap_or_default().as_secs_f64(),
-                            ms.as_secs_f64() * 1000.,
-                        )),
-                        None => timeout_values.push(
-                            Value::new(
-                                t.duration_since(*startup_time).unwrap_or_default().as_secs_f64(), 
-                                4.0)
-                        )
+                    {
+                        match maybe_ms {
+                            Some(ms) => ping_values.push(Value::new(
+                                t.duration_since(*startup_time)
+                                    .unwrap_or_default()
+                                    .as_secs_f64(),
+                                ms.as_secs_f64() * 1000.,
+                            )),
+                            None => {
+                                // mark as timeout
+                                timeout_values.push(Value::new(
+                                    t.duration_since(*startup_time)
+                                        .unwrap_or_default()
+                                        .as_secs_f64(),
+                                    4.0,
+                                ));
+                                // also set to a value ()
+                                ping_values.push(Value::new(
+                                    t.duration_since(*startup_time)
+                                        .unwrap_or_default()
+                                        .as_secs_f64(),
+                                    0.,
+                                ))
+                            }
+                        }
                     }
-                    ,
                     Datapoint::ThroughputUp(_, _) => todo!(),
                     Datapoint::ThroughputDown(d, t) => dl_values.push(Value::new(
-                        t.duration_since(*startup_time).unwrap_or_default().as_secs_f64(),
+                        t.duration_since(*startup_time)
+                            .unwrap_or_default()
+                            .as_secs_f64(),
                         d.unwrap_or_default(),
                     )),
                 }
             }
-            
 
             ui.heading("Latency (ms)");
-            let latency_line = Line::new(Values::from_values(ping_values))
-            .color(Color32::GOLD);
+            let latency_line = Line::new(Values::from_values(ping_values)).color(Color32::GOLD);
             let timeouts = Points::new(Values::from_values(timeout_values))
                 .filled(true)
                 .radius(8.)
                 .highlight()
                 .name("timeout")
                 .shape(egui::plot::MarkerShape::Down);
-            ui.add(Plot::new("latency")
-            .points(timeouts)
-            .line(latency_line)
-            .view_aspect(4.0));
+            ui.add(
+                Plot::new("latency")
+                    .points(timeouts)
+                    .line(latency_line)
+                    .view_aspect(4.0),
+            );
 
             ui.heading("Download speed (Mbit/s)");
 
-            let latency_line = Line::new(Values::from_values(dl_values))
-            .color(Color32::GOLD)
-            ;
+            let latency_line = Line::new(Values::from_values(dl_values)).color(Color32::GOLD);
             ui.add(Plot::new("dl").line(latency_line).view_aspect(4.0));
         });
     }
