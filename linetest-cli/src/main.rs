@@ -122,7 +122,7 @@ fn main() {
         measurement.ping_delay = Duration::from_secs(s);
     }
 
-    let receiver = measurement.run_periodic().unwrap();
+    let receiver = measurement.run_until_receiver_drops().unwrap();
     let mut measurement_result = vec![];
 
     println!("[[[ Linetest ]]]");
