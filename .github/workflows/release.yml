@@ -67,7 +67,8 @@ jobs:
       run: cargo bundle --release
       if: matrix.os == 'macOS-latest'
 
-    - name: Strip Application
+    - name: Strip Gui
+      working-directory: ./linetest-gui
       run: cargo strip
       if: matrix.os != 'windows-latest'
 
@@ -112,10 +113,14 @@ jobs:
         asset_name: linetest.exe
         asset_content_type: application/zip
 
-
     - name: Build Cli
       working-directory: ./linetest-cli
       run: cargo build --release
+
+    - name: Strip cli
+      working-directory: ./linetest-cli
+      run: cargo strip
+      if: matrix.os != 'windows-latest'
 
     - name: Upload Linux Cli
       if: matrix.os == 'ubuntu-latest'
