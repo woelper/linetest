@@ -50,6 +50,10 @@ jobs:
       run: cargo install cargo-bundle
       if: matrix.os == 'macOS-latest'
 
+    - name: Install cargo strip
+      run: cargo install cargo-strip
+      if: matrix.os != 'windows-latest'
+
     - name: Install xcb
       run: sudo apt-get install libxcb-shape0-dev libxcb-xfixes0-dev libxext-dev libxkbcommon-dev
       if: matrix.os == 'ubuntu-latest'
@@ -62,6 +66,10 @@ jobs:
       working-directory: ./linetest-gui
       run: cargo bundle --release
       if: matrix.os == 'macOS-latest'
+
+    - name: Strip Application
+      run: cargo strip
+      if: matrix.os != 'windows-latest'
 
     - name: Zip Mac Bundle
       working-directory: ./linetest-gui

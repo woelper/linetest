@@ -30,3 +30,8 @@ short_description = "Check your internet connection"
 long_description = """
 Get insight about your internet connection
 """
+
+[profile.release]
+incremental = true
+lto = true
+codegen-units = 1
