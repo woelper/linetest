@@ -18,6 +18,7 @@ pub type MeasurementResult = Vec<Datapoint>;
 
 
 /// A structure to set up and start a network measurement
+#[derive(Debug, Clone)]
 pub struct MeasurementBuilder {
     /// The IP address to use for latency tests. Currently, only  the first one is used.
     pub ping_ips: Vec<String>,
@@ -51,6 +52,17 @@ impl MeasurementBuilder {
     /// Generate a default measurement
     pub fn new() -> Self {
         MeasurementBuilder::default()
+    }
+
+    pub fn with_aws_payload(&self) -> Self {
+        Self {
+            downloads_urls: vec![
+                "https://d1dgjrknbc1uuw.cloudfront.net/2M".to_string(),
+                "https://d1dgjrknbc1uuw.cloudfront.net/1M".to_string(),
+                "https://d1dgjrknbc1uuw.cloudfront.net/4M".to_string(),
+            ],
+            ..self.to_owned()
+        }
     }
 
     /// Return the directory containing measurement results
@@ -260,14 +272,21 @@ mod tests {
 
     #[test]
     fn throughput_all_urls() {
-        std::env::set_var("RUST_LOG", "debug");
+        std::env::set_var("RUST_LOG", "info");
         let _ = env_logger::try_init();
         let measurement = MeasurementBuilder::default();
         for url in measurement.downloads_urls {
             let res = throughput::measured_download(&url).unwrap();
             info!("DL {} => {:?}", url, &res);
         }
+        let measurement = MeasurementBuilder::default().with_aws_payload();
+        for url in measurement.downloads_urls {
+            let res = throughput::measured_download(&url).unwrap();
+            info!("DL {} => {:?}", url, &res);
+        }
     }
+
+
 
     #[test]
     fn run() {
@@ -277,6 +296,14 @@ mod tests {
         measurement.run_once().unwrap();
     }
 
+    #[test]
+    fn run_aws() {
+        std::env::set_var("RUST_LOG", "info");
+        let _ = env_logger::try_init();
+        let measurement = MeasurementBuilder::default().with_aws_payload();
+        let res = measurement.run_once().unwrap();
+        info!("{:#?}", res);
+    }
 
     #[test]
     fn gen_save() {
