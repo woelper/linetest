@@ -1,24 +1,22 @@
-use eframe::egui::plot::Points;
-use eframe::egui::{Color32, Visuals};
+use eframe::egui::plot::{Legend, Points};
+use eframe::egui::{Color32, TextStyle, Visuals};
 use eframe::{egui, epi};
-use egui::plot::{Line, Plot, Value, Values};
+use egui::plot::{Line, Plot, Value, Values, HLine};
 use linetest::{self, Datapoint, Evaluation, MeasurementBuilder};
 use log::info;
 use std::ffi::OsStr;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{path::PathBuf, sync::mpsc::Receiver};
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "persistence", serde(default))] // if we add new fields, give them default values when deserializing old state
 pub struct LinetestApp {
-    // Example stuff:
-    // label: String,
     pub receiver: Option<Receiver<Datapoint>>,
     pub datapoints: Vec<Datapoint>,
     pub logs: Vec<PathBuf>,
     pub log_index: usize,
-    pub log_file: PathBuf,
     pub dark_mode: bool,
+    pub measurement: MeasurementBuilder,
 }
 
 impl Default for LinetestApp {
@@ -28,8 +26,8 @@ impl Default for LinetestApp {
             datapoints: vec![],
             logs: MeasurementBuilder::get_logs().unwrap_or_default(),
             log_index: 0,
-            log_file: PathBuf::new(),
             dark_mode: false,
+            measurement: MeasurementBuilder::new().with_aws_payload().with_ping_delay(1)
         }
     }
 }
@@ -58,17 +56,19 @@ impl epi::App for LinetestApp {
             datapoints,
             logs,
             log_index,
-            log_file,
             dark_mode,
+            measurement
         } = self;
 
-        let line_color = Color32::GRAY;
+        let line_color = Color32::from_rgb(255, 208, 0);
 
         ctx.request_repaint();
         if let Some(valid_receiver) = receiver {
             for dp in valid_receiver.try_iter() {
                 datapoints.push(dp);
-                let _ = datapoints.save(&log_file);
+                if let Some(log) = &measurement.logfile {
+                    let _ = datapoints.save(&log);
+                }
             }
         }
 
@@ -108,43 +108,6 @@ impl epi::App for LinetestApp {
                 datapoints.timeouts_for_session() * 100.
             ));
 
-            if egui::ComboBox::from_label("Log")
-                .show_index(ui, log_index, logs.len(), |i| {
-                    logs.get(i)
-                        .unwrap_or(&PathBuf::from("None"))
-                        .file_name()
-                        .unwrap_or(OsStr::new("no_file_name"))
-                        .to_string_lossy()
-                        .to_string()
-                })
-                .changed()
-            {
-                *receiver = None;
-                datapoints.clear();
-                if let Some(log) = logs.get(*log_index) {
-                    datapoints.load(log).unwrap();
-                    info!("Loaded {} data points", datapoints.len());
-                }
-            }
-
-            if receiver.is_none() {
-                if ui.button("⏺ Start recording").clicked() {
-                    let measurement = MeasurementBuilder::default();
-                    if let Some(log) = &measurement.logfile {
-                        *log_file = log.clone();
-                    }
-                    *datapoints = vec![];
-                    if let Ok(new_rec) = measurement.run_until_receiver_drops() {
-                        *receiver = Some(new_rec);
-                    }
-                }
-            } else if ui.button("⏹ Stop").clicked() {
-                *receiver = None;
-                if let Ok(new_logs) = MeasurementBuilder::get_logs() {
-                    *logs = new_logs;
-                }
-            }
-
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                 ui.add(egui::Hyperlink::new("https://github.com/woelper/linetest/").text("github"));
             });
@@ -166,7 +129,7 @@ impl epi::App for LinetestApp {
                 None => UNIX_EPOCH,
             };
 
-            for dp in datapoints {
+            for dp in &mut *datapoints {
                 match dp {
                     Datapoint::Latency(maybe_ms, t) =>
                     // check if this is a timeout
@@ -206,8 +169,10 @@ impl epi::App for LinetestApp {
                 }
             }
 
+            // let line_color = ui.style().visuals.hyperlink_color;
             ui.heading("Latency (ms)");
-            let latency_line = Line::new(Values::from_values(ping_values)).color(line_color);
+            let latency_line = Line::new(Values::from_values(ping_values.clone())).color(line_color).name("Ping (ms)").fill(0.0);
+            let latency_points = Points::new(Values::from_values(ping_values)).stems(0.0).color(line_color);
             let timeouts = Points::new(Values::from_values(timeout_values))
                 .filled(true)
                 .radius(8.)
@@ -217,14 +182,94 @@ impl epi::App for LinetestApp {
             ui.add(
                 Plot::new("latency")
                     .line(latency_line)
+                    .hline(HLine::new(datapoints.mean_latency().as_millis()as f64).name(format!("Mean latency ({}ms)", datapoints.mean_latency().as_millis())).color(line_color.linear_multiply(1.3)))
+                    .points(latency_points)
                     .points(timeouts)
+                    .legend(Legend::default().text_style(TextStyle::Small))
                     .view_aspect(4.0),
             );
 
-            ui.heading("Download speed (Mbit/s)");
 
-            let download_line = Line::new(Values::from_values(dl_values)).color(line_color);
+            ui.heading("Download speed (Mbit/s)");
+            let download_line = Line::new(Values::from_values(dl_values)).color(line_color).fill(0.0);
             ui.add(Plot::new("dl").line(download_line).view_aspect(4.0));
+
+            if receiver.is_none() {
+                if ui.button("⏺ Start recording").clicked() {
+                    //measurement.logfile = MeasurementBuilder::default().logfile;
+
+                    *datapoints = vec![];
+                    if let Ok(new_rec) = measurement.run_until_receiver_drops() {
+                        *receiver = Some(new_rec);
+                    }
+                }
+            } else if ui.button("⏹ Stop").clicked() {
+                *receiver = None;
+                
+                //refresh logs on disk after last session finishes
+                if let Ok(new_logs) = MeasurementBuilder::get_logs() {
+                    *logs = new_logs;
+                }
+                // generate new log name so we don't overwrite the last
+                measurement.logfile = MeasurementBuilder::default().logfile;
+            }
+
+
+
+            egui::CollapsingHeader::new("Settings").show(ui, |ui | {
+
+                if let Some (log)= measurement.logfile.as_mut()  {
+                    let mut log_file_string = log.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    if ui.text_edit_singleline(&mut log_file_string).changed() {
+                        if let Some(parent) = log.parent() {
+                            *log = parent.join(log_file_string).with_extension("ltest");
+                        }
+                    }
+                }
+
+                let mut delay = measurement.ping_delay.as_secs(); 
+
+                ui.horizontal(|ui| {
+                    if ui.add(egui::DragValue::new(&mut delay)).changed() {
+                        measurement.ping_delay = Duration::from_secs(delay);
+                    }
+                    ui.label("ping delay (s)");
+                });
+
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut measurement.throughput_ping_ratio));
+                    ui.label("Perform speedtest after these many pings");
+                });
+                
+
+            });
+
+            egui::CollapsingHeader::new("log archive").show(ui, |ui | {
+                
+                if egui::ComboBox::from_label("Log")
+                .show_index(ui, log_index, logs.len(), |i| {
+                    logs.get(i)
+                        .unwrap_or(&PathBuf::from("None"))
+                        .file_name()
+                        .unwrap_or(OsStr::new("no_file_name"))
+                        .to_string_lossy()
+                        .to_string()
+                })
+                .changed()
+            {
+                *receiver = None;
+                datapoints.clear();
+                if let Some(log) = logs.get(*log_index) {
+                    datapoints.load(log).unwrap();
+                    info!("Loaded {} data points", datapoints.len());
+                }
+            }
+
+            });
+
+
+
+
         });
     }
 }

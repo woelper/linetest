@@ -27,6 +27,7 @@ pub struct MeasurementBuilder {
     pub downloads_urls: Vec<String>,
     /// The delay between pings
     pub ping_delay: Duration,
+    pub throughput_ping_ratio: u16,
     /// The path to a logfile. Will be used if not `None`.
     pub logfile: Option<PathBuf>,
 }
@@ -42,7 +43,8 @@ impl Default for MeasurementBuilder {
                 "https://awscli.amazonaws.com/AWSCLIV2.msi".to_string(),
                 "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip".to_string(),
             ],
-            ping_delay: Duration::from_secs(7),
+            ping_delay: Duration::from_secs(5),
+            throughput_ping_ratio: 10,
             logfile: Some(MeasurementBuilder::get_data_dir().join(format!("{}-{}-{}-{}h{}m.ltst", now.year(), now.month(), now.day(), now.hour(), now.minute())))
         }
     }
@@ -61,6 +63,13 @@ impl MeasurementBuilder {
                 "https://d1dgjrknbc1uuw.cloudfront.net/1M".to_string(),
                 "https://d1dgjrknbc1uuw.cloudfront.net/4M".to_string(),
             ],
+            ..self.to_owned()
+        }
+    }
+
+    pub fn with_ping_delay(&self, delay: u64) -> Self {
+        Self {
+            ping_delay: Duration::from_secs(delay),
             ..self.to_owned()
         }
     }
@@ -118,7 +127,7 @@ impl MeasurementBuilder {
     /// Run periodic measurements to a Receiver containing [Datapoint]s
     pub fn run_advanced(&self, duration: Option<Duration>) -> Result<Receiver<Datapoint>, Error> {
         //define how many latency tests to perform before running a download test
-        let latency_download_ratio = 10;
+        let latency_download_ratio = self.throughput_ping_ratio;
 
         let (sender, receiver) = channel();
 
