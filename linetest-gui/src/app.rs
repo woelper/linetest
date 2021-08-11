@@ -1,7 +1,7 @@
 use eframe::egui::plot::{Legend, Points};
-use eframe::egui::{Color32, TextStyle, Visuals};
+use eframe::egui::{Color32, FontDefinitions, FontFamily, TextStyle, Visuals};
 use eframe::{egui, epi};
-use egui::plot::{Line, Plot, Value, Values, HLine};
+use egui::plot::{HLine, Line, Plot, Value, Values};
 use linetest::{self, Datapoint, Evaluation, MeasurementBuilder};
 use log::info;
 use std::ffi::OsStr;
@@ -27,7 +27,9 @@ impl Default for LinetestApp {
             logs: MeasurementBuilder::get_logs().unwrap_or_default(),
             log_index: 0,
             dark_mode: false,
-            measurement: MeasurementBuilder::new().with_aws_payload().with_ping_delay(1)
+            measurement: MeasurementBuilder::new()
+                .with_aws_payload()
+                .with_ping_delay(1),
         }
     }
 }
@@ -49,6 +51,36 @@ impl epi::App for LinetestApp {
         epi::set_value(storage, epi::APP_KEY, self);
     }
 
+    fn setup(
+        &mut self,
+        ctx: &egui::CtxRef,
+        _frame: &mut epi::Frame<'_>,
+        _storage: Option<&dyn epi::Storage>,
+    ) {
+        let mut fonts = FontDefinitions::default();
+
+        fonts.font_data.insert(
+            "plex".to_owned(),
+            std::borrow::Cow::Borrowed(include_bytes!("IBMPlexSans-Regular.ttf")),
+        );
+
+        fonts
+            .family_and_size
+            .insert(TextStyle::Body, (FontFamily::Proportional, 18.0));
+
+        fonts
+            .family_and_size
+            .insert(TextStyle::Button, (FontFamily::Proportional, 18.0));
+
+        fonts
+            .fonts_for_family
+            .get_mut(&FontFamily::Proportional)
+            .unwrap()
+            .insert(0, "plex".to_owned());
+
+        ctx.set_fonts(fonts);
+    }
+
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
         let Self {
@@ -57,7 +89,7 @@ impl epi::App for LinetestApp {
             logs,
             log_index,
             dark_mode,
-            measurement
+            measurement,
         } = self;
 
         let line_color = Color32::from_rgb(255, 208, 0);
@@ -93,7 +125,7 @@ impl epi::App for LinetestApp {
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
-            ui.heading("Info");
+            ui.label("Info");
 
             ui.label(format!("{} samples", datapoints.len()));
             ui.label(format!("Time: {:.1}s", datapoints.duration().as_secs_f64()));
@@ -170,28 +202,46 @@ impl epi::App for LinetestApp {
             }
 
             // let line_color = ui.style().visuals.hyperlink_color;
-            ui.heading("Latency (ms)");
-            let latency_line = Line::new(Values::from_values(ping_values.clone())).color(line_color).name("Ping (ms)").fill(0.0);
-            let latency_points = Points::new(Values::from_values(ping_values)).stems(0.0).color(line_color);
+            ui.label("Latency (ms)");
+            let latency_line = Line::new(Values::from_values(ping_values.clone()))
+                .color(line_color)
+                .name("Ping (ms)")
+                .fill(0.0);
+            let latency_points = Points::new(Values::from_values(ping_values))
+                .stems(0.0)
+                .color(line_color);
             let timeouts = Points::new(Values::from_values(timeout_values))
                 .filled(true)
                 .radius(8.)
                 .highlight()
                 .name("timeout")
                 .shape(egui::plot::MarkerShape::Down);
-            ui.add(
-                Plot::new("latency")
-                    .line(latency_line)
-                    .hline(HLine::new(datapoints.mean_latency().as_millis()as f64).name(format!("Mean latency ({}ms)", datapoints.mean_latency().as_millis())).color(line_color.linear_multiply(1.3)))
-                    .points(latency_points)
-                    .points(timeouts)
-                    .legend(Legend::default().text_style(TextStyle::Small))
-                    .view_aspect(4.0),
-            );
 
+            let mut latency_plot = Plot::new("latency")
+                .hline(
+                    HLine::new(datapoints.mean_latency().as_millis() as f64)
+                        .name(format!(
+                            "Mean latency ({}ms)",
+                            datapoints.mean_latency().as_millis()
+                        ))
+                        .color(line_color.linear_multiply(0.1)),
+                )
+                .points(latency_points)
+                .points(timeouts)
+                .legend(Legend::default().text_style(TextStyle::Small))
+                .view_aspect(5.0);
 
-            ui.heading("Download speed (Mbit/s)");
-            let download_line = Line::new(Values::from_values(dl_values)).color(line_color).fill(0.0);
+            // add a line to the plot if it is not dense
+            if datapoints.len() < 100 {
+                latency_plot = latency_plot.line(latency_line);
+            }
+
+            ui.add(latency_plot);
+
+            ui.label("Download speed (Mbit/s)");
+            let download_line = Line::new(Values::from_values(dl_values))
+                .color(line_color)
+                .fill(0.0);
             ui.add(Plot::new("dl").line(download_line).view_aspect(4.0));
 
             if receiver.is_none() {
@@ -205,7 +255,7 @@ impl epi::App for LinetestApp {
                 }
             } else if ui.button("⏹ Stop").clicked() {
                 *receiver = None;
-                
+
                 //refresh logs on disk after last session finishes
                 if let Ok(new_logs) = MeasurementBuilder::get_logs() {
                     *logs = new_logs;
@@ -214,12 +264,13 @@ impl epi::App for LinetestApp {
                 measurement.logfile = MeasurementBuilder::default().logfile;
             }
 
-
-
-            egui::CollapsingHeader::new("Settings").show(ui, |ui | {
-
-                if let Some (log)= measurement.logfile.as_mut()  {
-                    let mut log_file_string = log.file_name().unwrap_or_default().to_string_lossy().to_string();
+            egui::CollapsingHeader::new("Settings").show(ui, |ui| {
+                if let Some(log) = measurement.logfile.as_mut() {
+                    let mut log_file_string = log
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
                     if ui.text_edit_singleline(&mut log_file_string).changed() {
                         if let Some(parent) = log.parent() {
                             *log = parent.join(log_file_string).with_extension("ltest");
@@ -227,7 +278,7 @@ impl epi::App for LinetestApp {
                     }
                 }
 
-                let mut delay = measurement.ping_delay.as_secs(); 
+                let mut delay = measurement.ping_delay.as_secs();
 
                 ui.horizontal(|ui| {
                     if ui.add(egui::DragValue::new(&mut delay)).changed() {
@@ -240,13 +291,14 @@ impl epi::App for LinetestApp {
                     ui.add(egui::DragValue::new(&mut measurement.throughput_ping_ratio));
                     ui.label("Perform speedtest after these many pings");
                 });
-                
-
             });
 
-            egui::CollapsingHeader::new("log archive").show(ui, |ui | {
-                
-                if egui::ComboBox::from_label("Log")
+            egui::CollapsingHeader::new("Log archive").show(ui, |ui| {
+                if egui::ComboBox::from_label(if receiver.is_some() {
+                    "Stop and load selected log"
+                } else {
+                    "Load selected log"
+                })
                 .show_index(ui, log_index, logs.len(), |i| {
                     logs.get(i)
                         .unwrap_or(&PathBuf::from("None"))
@@ -256,20 +308,32 @@ impl epi::App for LinetestApp {
                         .to_string()
                 })
                 .changed()
-            {
-                *receiver = None;
-                datapoints.clear();
-                if let Some(log) = logs.get(*log_index) {
-                    datapoints.load(log).unwrap();
-                    info!("Loaded {} data points", datapoints.len());
+                {
+                    *receiver = None;
+                    datapoints.clear();
+                    if let Some(log) = logs.get(*log_index) {
+                        datapoints.load(log).unwrap();
+                        info!("Loaded {} data points", datapoints.len());
+                    }
                 }
-            }
 
+                if let Some(log) = logs.get(*log_index) {
+                    if ui
+                        .button(format!(
+                            "Delete {}",
+                            log.file_name()
+                                .unwrap_or(OsStr::new("no_file_name"))
+                                .to_string_lossy()
+                        ))
+                        .clicked()
+                    {
+                        let _ = std::fs::remove_file(&log);
+                        if let Ok(new_logs) = MeasurementBuilder::get_logs() {
+                            *logs = new_logs;
+                        }
+                    }
+                }
             });
-
-
-
-
         });
     }
 }
