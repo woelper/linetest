@@ -1,5 +1,5 @@
 use eframe::egui::plot::{Legend, Points};
-use eframe::egui::{Color32, FontDefinitions, FontFamily, TextStyle, Visuals};
+use eframe::egui::{Color32, FontData, FontDefinitions, FontFamily, TextStyle, Visuals};
 use eframe::{egui, epi};
 use egui::plot::{HLine, Line, Plot, Value, Values};
 use linetest::{self, Datapoint, Evaluation, MeasurementBuilder};
@@ -53,36 +53,37 @@ impl epi::App for LinetestApp {
 
     fn setup(
         &mut self,
-        ctx: &egui::CtxRef,
-        _frame: &mut epi::Frame<'_>,
+        ctx: &egui::Context,
+        _frame: &epi::Frame,
         _storage: Option<&dyn epi::Storage>,
     ) {
         let mut fonts = FontDefinitions::default();
 
+        // fonts.font_data.insert(key, value)
+
         fonts.font_data.insert(
             "plex".to_owned(),
-            std::borrow::Cow::Borrowed(include_bytes!("IBMPlexSans-Regular.ttf")),
+            FontData::from_static(include_bytes!("IBMPlexSans-Regular.ttf")), // std::borrow::Cow::Borrowed(include_bytes!("IBMPlexSans-Regular.ttf")),
         );
 
         fonts
-            .family_and_size
-            .insert(TextStyle::Body, (FontFamily::Proportional, 18.0));
-
-        fonts
-            .family_and_size
-            .insert(TextStyle::Button, (FontFamily::Proportional, 18.0));
-
-        fonts
-            .fonts_for_family
+            .families
             .get_mut(&FontFamily::Proportional)
             .unwrap()
-            .insert(0, "plex".to_owned());
+            .insert(0, "plex".into());
 
+        let mut style: egui::Style = (*ctx.style()).clone();
+
+
+        style.text_styles.get_mut(&TextStyle::Body).unwrap().size = 20.;
+        style.text_styles.get_mut(&TextStyle::Button).unwrap().size = 20.;
+        style.text_styles.get_mut(&TextStyle::Small).unwrap().size = 15.;
+        ctx.set_style(style);
         ctx.set_fonts(fonts);
     }
 
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &epi::Frame) {
         let Self {
             receiver,
             datapoints,
@@ -113,14 +114,14 @@ impl epi::App for LinetestApp {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
-                egui::menu::menu(ui, "File", |ui| {
-                    if ui.button("Quit").clicked() {
-                        frame.quit();
-                    }
-                    if ui.button("Toggle light/dark").clicked() {
-                        *dark_mode = !*dark_mode;
-                    }
-                });
+                // egui::menu::menu(ui, "File", |ui| {
+                //     if ui.button("Quit").clicked() {
+                //         frame.quit();
+                //     }
+                //     if ui.button("Toggle light/dark").clicked() {
+                //         *dark_mode = !*dark_mode;
+                //     }
+                // });
             });
         });
 
@@ -141,7 +142,7 @@ impl epi::App for LinetestApp {
             ));
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
-                ui.add(egui::Hyperlink::new("https://github.com/woelper/linetest/").text("github"));
+                ui.add(egui::Hyperlink::new("https://github.com/woelper/linetest/"));
             });
         });
 
@@ -213,36 +214,37 @@ impl epi::App for LinetestApp {
             let timeouts = Points::new(Values::from_values(timeout_values))
                 .filled(true)
                 .radius(8.)
-                .highlight()
                 .name("timeout")
                 .shape(egui::plot::MarkerShape::Down);
 
-            let mut latency_plot = Plot::new("latency")
-                .hline(
-                    HLine::new(datapoints.mean_latency().as_millis() as f64)
-                        .name(format!(
-                            "Mean latency ({}ms)",
-                            datapoints.mean_latency().as_millis()
-                        ))
-                        .color(line_color.linear_multiply(0.1)),
-                )
-                .points(latency_points)
-                .points(timeouts)
+            Plot::new("latency")
+                .view_aspect(5.0)
                 .legend(Legend::default().text_style(TextStyle::Small))
-                .view_aspect(5.0);
+                .show(ui, |plot_ui| {
+                    plot_ui.points(latency_points);
 
-            // add a line to the plot if it is not dense
-            if datapoints.len() < 100 {
-                latency_plot = latency_plot.line(latency_line);
-            }
-
-            ui.add(latency_plot);
+                    // add a line to the plot if it is not dense
+                    if datapoints.len() < 100 {
+                        plot_ui.line(latency_line);
+                    }
+                    plot_ui.points(timeouts);
+                    plot_ui.hline(
+                        HLine::new(datapoints.mean_latency().as_millis() as f64)
+                            .name(format!(
+                                "Mean latency ({}ms)",
+                                datapoints.mean_latency().as_millis()
+                            ))
+                            .color(line_color.linear_multiply(0.1)),
+                    );
+                });
 
             ui.label("Download speed (Mbit/s)");
             let download_line = Line::new(Values::from_values(dl_values))
                 .color(line_color)
                 .fill(0.0);
-            ui.add(Plot::new("dl").line(download_line).view_aspect(4.0));
+            Plot::new("dl").view_aspect(4.0).show(ui, |plot_ui| {
+                plot_ui.line(download_line);
+            });
 
             if receiver.is_none() {
                 if ui.button("⏺ Start recording").clicked() {
